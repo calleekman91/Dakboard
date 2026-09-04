@@ -1,0 +1,801 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Elpris SE3</title>
+<style>
+  :root{
+    --bg:#0d0f12;
+    --fg:#f2f4f7;
+    --dim:#7d8794;
+    --line:#242a31;
+    --low:#3ddc84;
+    --mid:#f5c451;
+    --high:#f2603c;
+    --now:#ff3b30;         /* lodräta strecket för aktuell tid */
+    --avg:#ff3b30;         /* streckade linjen för dygnets snitt */
+    --ylab:clamp(72px,10vw,190px);  /* bredd på y-axelns etikettkolumn */
+    --axis-size:clamp(32px,4.2vw,48px); /* textstorlek på x- och y-axeln */
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--bg); color:var(--fg);
+    font-family:"Inter",-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-variant-numeric:tabular-nums;
+    display:flex; flex-direction:column;
+    padding:clamp(10px,2.2vw,26px);
+    gap:clamp(8px,1.6vh,18px);
+    overflow:hidden;
+  }
+
+  /* aktuellt pris, sitter fast på det röda strecket i diagrammet */
+  .nowtag{position:absolute; top:0; text-align:center; line-height:.95; white-space:nowrap;
+          text-shadow:0 0 10px var(--bg), 0 0 5px var(--bg), 0 0 2px var(--bg)}
+  .nowtag b{display:block; font-size:clamp(30px,5.6vw,86px); font-weight:650; letter-spacing:-.02em}
+  .nowtag em{font-style:normal; font-size:.34em; font-weight:600; color:var(--dim); margin-left:.18em}
+  .nowtag i{display:block; font-style:normal; font-weight:500; color:var(--dim);
+            font-size:clamp(11px,1.5vw,20px); margin-top:.25em; letter-spacing:.02em}
+
+  /* ---- Diagram ---- */
+  .chart-wrap{flex:1 1 auto; display:flex; flex-direction:column; min-height:0; gap:5px}
+  .plot{position:relative; flex:1 1 auto; min-height:0; padding-left:var(--ylab)}
+  #svg{width:100%; height:100%; display:block}
+
+  /* punkter och etiketter ovanpå diagrammet */
+  .marks{position:absolute; left:var(--ylab); right:0; top:0; bottom:0; pointer-events:none}
+  .mark{position:absolute; width:13px; height:13px; margin:-6.5px 0 0 -6.5px; border-radius:50%;
+        box-shadow:0 0 0 3px var(--bg)}
+  .mtag{position:absolute; font-size:clamp(14px,1.9vw,26px); font-weight:700; color:var(--fg);
+        white-space:nowrap; letter-spacing:.01em; line-height:1.15;
+        background:var(--bg); padding:.1em .4em; border-radius:6px}
+  .mtag em{color:var(--dim); font-style:normal; font-weight:600; font-size:.72em; margin-left:.4em}
+
+  .yaxis{position:absolute; left:0; top:0; bottom:0; width:var(--ylab);
+         font-size:var(--axis-size); color:var(--dim)}
+  .yaxis span{position:absolute; right:.45em; transform:translateY(-50%); white-space:nowrap}
+
+  .axis{position:relative; height:1.35em; margin-left:var(--ylab);
+        font-size:var(--axis-size); color:var(--dim)}
+  .axis span{position:absolute; top:0; transform:translateX(-50%); white-space:nowrap}
+
+  /* ---- Väderrad under x-axeln ---- */
+  /* font-size och min-height sätts av skriptet efter kolumnbredden */
+  .wx{position:relative; margin-left:var(--ylab); min-height:96px; font-size:20px}
+  .wx > div{position:absolute; top:0; text-align:center; line-height:1.15; white-space:nowrap;
+            color:var(--dim)}
+  .wx svg{display:block; margin:0 auto .14em; width:1.9em; height:1.9em}
+  .wx b{display:block; color:var(--fg); font-weight:600; font-size:1.05em}
+  .wx i{display:block; font-style:normal; font-size:.82em; margin-top:.1em}
+
+  /* ---- Trafikindikator: bom i nedre vänstra hörnet ---- */
+  .road{display:flex; align-items:flex-end; gap:.7em;
+        font-size:clamp(11px,1.4vw,18px); color:var(--dim)}
+  .road svg{flex:0 0 auto; width:clamp(50px,5.5vw,86px); height:auto; display:block}
+  .road div{padding-bottom:.15em}
+  .road b{display:block; color:var(--fg); font-weight:600; font-size:1.15em;
+          letter-spacing:.06em; text-transform:uppercase}
+  .road em{font-style:normal}
+  .road .sun{display:flex; align-items:center; gap:.4em; margin-left:1.8em; padding-bottom:.35em}
+  .road .sun svg{width:1.5em; height:1.5em; flex:0 0 auto}
+  .road .sun span{color:var(--fg); font-weight:600; margin-right:.5em}
+
+  /* ---- Nedre raden: bom + sol till vänster, radar till höger ---- */
+  .bottom{display:flex; align-items:flex-end; justify-content:space-between; gap:1.2em}
+  .radar{position:relative; flex:0 0 auto; overflow:hidden; border-radius:10px;
+         width:clamp(130px,15vw,250px); height:clamp(130px,15vw,250px);
+         background:#10141a; box-shadow:0 0 0 1px var(--line)}
+  .radar img{position:absolute; width:256px; height:256px; border:0}
+  .radar > div{position:absolute; inset:0}
+  #rcanvas{position:absolute; inset:0; width:100%; height:100%}
+  #rlayers > div{position:absolute; inset:0; opacity:0; transition:opacity .16s linear}
+  .rdot{position:absolute; left:50%; top:50%; width:8px; height:8px;
+        margin:-4px 0 0 -4px; border-radius:50%; background:var(--now);
+        box-shadow:0 0 0 2px rgba(0,0,0,.65); inset:auto}
+  .rtime{position:absolute; inset:auto auto 5px 7px; color:#e6eaef; font-weight:600;
+         font-size:clamp(9px,1.05vw,14px); text-shadow:0 1px 3px #000}
+  .ratt{position:absolute; inset:auto 5px 4px auto; color:#939daa; font-size:8px; opacity:.75}
+
+  .msg{margin:auto; text-align:center; color:var(--dim); font-size:clamp(13px,1.8vw,20px); line-height:1.5}
+</style>
+</head>
+<body>
+
+<div id="app" style="display:none; flex-direction:column; gap:inherit; flex:1; min-height:0">
+  <div class="chart-wrap">
+    <div class="plot">
+      <div class="yaxis" id="yaxis"></div>
+      <svg id="svg" viewBox="0 0 1000 300" preserveAspectRatio="none" aria-hidden="true"></svg>
+      <div class="marks" id="marks"></div>
+    </div>
+    <div class="axis" id="axis"></div>
+  </div>
+  <div class="wx" id="wx"></div>
+  <div class="bottom">
+    <div class="road" id="road"></div>
+    <div class="radar" id="radar">
+      <div id="rbase"></div>
+      <div id="rlayers"></div>
+      <canvas id="rcanvas"></canvas>
+      <div class="rdot"></div>
+      <div class="rtime" id="rtime"></div>
+      <div class="ratt">© OpenStreetMap · CARTO · RainViewer</div>
+    </div>
+  </div>
+</div>
+
+<div class="msg" id="msg">Hämtar elpriser…</div>
+
+<script>
+/* ==================== KONFIGURATION ====================
+   Alla belopp i öre/kWh EXKLUSIVE moms. Momsen läggs på i slutet.
+   Byt ut mot dina egna siffror från el- och nätfakturan.
+   ======================================================== */
+const ZONE        = "SE3";   // SE1 | SE2 | SE3 | SE4
+const TZ          = "Europe/Stockholm";
+
+const MARKUP_ORE  = 4.0;     // elhandlarens påslag på spotpriset
+const CERT_ORE    = 0.0;     // elcertifikat/ursprungsgarantier, om det debiteras per kWh
+const GRID_ORE    = 25.0;    // nätavgift, ÖVERFÖRINGSAVGIFTEN per kWh (ej fast abonnemang)
+const TAX_ORE     = 36.0;    // energiskatt 2026 (36 öre; 26,4 i kommuner med reducerad skatt)
+const VAT         = 1.25;    // 25 % moms
+
+const SHOW_TOTAL  = true;    // true = totalpris inkl. allt, false = rent spotpris
+const BUCKET_MIN  = 30;      // upplösning i kurvan: 60 = timmedel, 30 = halvtimme, 15 = varje kvart
+const SMOOTHING   = 0.6;     // 0 = raka linjer mellan punkter, 1 = maximalt mjuk kurva
+const RAW_GHOST   = false;   // tunn linje med rådata (varje kvart) bakom huvudkurvan
+const AREA_FILL   = false;   // tonad yta under kurvan
+const DIM_PAST    = false;   // tona ner tiden som redan passerat
+const MARKERS     = false;   // punkter + prislappar för dygnets lägsta/högsta och just nu
+const Y_TICKS     = 5;       // ungefärligt antal steg på y-axeln
+const GRID        = false;   // rutnätslinjer i diagrammet
+const AVG_LINE    = true;    // streckad linje för dygnets snittpris
+
+const WEATHER     = true;    // väderrad under x-axeln (open-meteo.com, gratis, ingen nyckel)
+const LAT         = 59.3106; // Nacka, Stockholm
+const LON         = 18.1637;
+
+/* Trafikläge: påfarten till Södra länken från 222 (Värmdöleden).
+   Kräver en gratis nyckel från api.trafikinfo.trafikverket.se – utan nyckel visas ingen rad. */
+const WX_STEP     = 1;       // väder var N:te timme (1 = varje timme)
+const WX_MAX_FS   = 20;      // största textstorlek i väderraden, px
+
+const RADAR       = false;   // kartrutan i nedre högra hörnet
+const RADAR_MODE  = "forecast";  // "forecast" = nedbördsprognos framåt (open-meteo)
+                                 // "radar"    = verklig radar 2 h bakåt (rainviewer)
+const RADAR_ZOOM  = 7;       // 6 = större område, 8 = mer inzoomat
+const RADAR_MS    = 550;     // ms per bildruta
+const RADAR_PAUSE = 1700;    // paus på sista rutan innan loopen börjar om
+const RADAR_FRAMES= 8;       // "radar": antal historiska bildrutor
+
+const FC_HOURS    = 8;       // "forecast": antal timmar framåt
+const FC_COLS     = 11;      // punkter i rutnätet, öst–väst
+const FC_ROWS     = 7;       // punkter i rutnätet, nord–syd
+const FC_DLON     = 0.26;    // avstånd mellan punkterna i grader
+const FC_DLAT     = 0.22;
+
+const TRV_KEY     = "";
+const TRV_DEMO    = "";      // "open" | "closed" | "soon" – tvingar ett läge för att testa utseendet
+const TRV_ROADS   = ["222", "75"];                    // 222 = Värmdöleden, 75 = Södra länken
+const TRV_PLACE   = /södra länken|värmdöleden|sickla|nacka|222/i;   // vilka avstängningar som räknas
+const TRV_LABEL   = "Södra länken från 222";
+const REFRESH_MS  = 5 * 60 * 1000;
+/* ======================================================== */
+
+const FIXED_ORE = MARKUP_ORE + CERT_ORE + GRID_ORE + TAX_ORE;
+const W = 1000, H = 300;
+const $ = id => document.getElementById(id);
+const f = n => n.toFixed(2);
+const kr = v => v.toFixed(2).replace(".", ",");   // kronor med komma, t.ex. 2,38
+const dateFmt = new Intl.DateTimeFormat("sv-SE",{timeZone:TZ,year:"numeric",month:"2-digit",day:"2-digit"});
+const timeFmt = new Intl.DateTimeFormat("sv-SE",{timeZone:TZ,hour:"2-digit",minute:"2-digit"});
+
+// SVG-attribut klarar inte var(), så färgerna läses ut som riktiga värden
+const C = {};
+["bg","fg","dim","line","low","mid","high","now","avg","neg"].forEach(k =>
+  C[k] = getComputedStyle(document.documentElement).getPropertyValue("--"+k).trim());
+
+function apiUrl(offsetDays){
+  const d = new Date(Date.now() + offsetDays*864e5);
+  const [y,m,day] = dateFmt.format(d).split("-");
+  return `https://www.elprisetjustnu.se/api/v1/prices/${y}/${m}-${day}_${ZONE}.json`;
+}
+
+const spotOre = r => r.SEK_per_kWh * 100;                    // rent spotpris, exkl. moms
+const priceOf = r => SHOW_TOTAL ? (spotOre(r) + FIXED_ORE) * VAT : spotOre(r);
+
+async function getDay(offset){
+  try{
+    const r = await fetch(apiUrl(offset), {cache:"no-store"});
+    if(!r.ok) return null;
+    const j = await r.json();
+    return Array.isArray(j) && j.length ? j : null;
+  }catch(e){ return null; }
+}
+
+function colorFor(v, lo, hi){
+  const t = hi > lo ? (v - lo) / (hi - lo) : .5;
+  if(t < .34) return C.low;
+  if(t < .70) return C.mid;
+  return C.high;
+}
+
+// Slår ihop råpriserna till jämna intervall (t.ex. timmedelvärden)
+function bucketize(rows){
+  const t0 = Date.parse(rows[0].time_start);
+  const size = BUCKET_MIN * 60000;
+  const map = new Map();
+  rows.forEach(r=>{
+    const key = Math.floor((Date.parse(r.time_start) - t0) / size);
+    if(!map.has(key)) map.set(key, []);
+    map.get(key).push(priceOf(r));
+  });
+  return [...map.keys()].sort((a,b)=>a-b).map(k=>{
+    const arr = map.get(k);
+    return { t0: t0 + k*size, t1: t0 + (k+1)*size,
+             v: arr.reduce((a,b)=>a+b,0) / arr.length };
+  });
+}
+
+/* ---------- Väder från open-meteo ---------- */
+const dayKey  = new Intl.DateTimeFormat("sv-SE",{timeZone:TZ,year:"numeric",month:"2-digit",day:"2-digit"});
+const hourKey = new Intl.DateTimeFormat("sv-SE",{timeZone:TZ,hour:"2-digit",hour12:false});
+const wxKey   = t => `${dayKey.format(t)}T${String(hourKey.format(t)).padStart(2,"0")}:00`;
+
+async function getWeather(){
+  if(!WEATHER) return null;
+  try{
+    const u = `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}`
+            + `&hourly=temperature_2m,precipitation,precipitation_probability,weather_code,uv_index,wind_speed_10m`
+            + `&daily=sunrise,sunset&wind_speed_unit=ms`
+            + `&timezone=${encodeURIComponent(TZ)}&forecast_days=2`;
+    const r = await fetch(u, {cache:"no-store"});
+    if(!r.ok) return null;
+    const j = await r.json();
+    const m = new Map();
+    j.hourly.time.forEach((t,i) => m.set(t, {
+      temp: j.hourly.temperature_2m[i],
+      prec: j.hourly.precipitation[i],
+      pop : j.hourly.precipitation_probability[i],   // regnrisk i procent
+      code: j.hourly.weather_code[i],
+      uv  : j.hourly.uv_index[i],
+      wind: j.hourly.wind_speed_10m[i]               // m/s
+    }));
+    // soltiderna kommer som "2026-09-04T06:12" i lokal tid – används som text
+    const d = j.daily || {};
+    return { h: m, rise: (d.sunrise || [])[0], set: (d.sunset || [])[0] };
+  }catch(e){ return null; }
+}
+
+// Ikoner ritas som svg – emoji finns inte alltid på DAKboard-enheter
+function wxIcon(code, night){
+  const S = '<svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">';
+  const sun = night
+    ? `<path d="M15.5 3.5a7.5 7.5 0 1 0 5 12.4A8.5 8.5 0 0 1 15.5 3.5Z" fill="#e8d7a3" stroke="none"/>`
+    : `<circle cx="12" cy="12" r="4.4" fill="#f5c451"/>`
+      + `<g stroke="#f5c451" stroke-width="1.8">`
+      + [[12,1.4,12,3.6],[12,20.4,12,22.6],[1.4,12,3.6,12],[20.4,12,22.6,12],
+         [4.6,4.6,6.1,6.1],[17.9,17.9,19.4,19.4],[19.4,4.6,17.9,6.1],[6.1,17.9,4.6,19.4]]
+        .map(c=>`<line x1="${c[0]}" y1="${c[1]}" x2="${c[2]}" y2="${c[3]}"/>`).join("") + `</g>`;
+  const cloud = (x=0,y=0,fill="#9aa4b0") =>
+    `<path transform="translate(${x},${y})" fill="${fill}" stroke="none"
+       d="M7.2 18.5h9.9a3.6 3.6 0 0 0 .4-7.2 5.4 5.4 0 0 0-10.2-1.3 3.9 3.9 0 0 0-.1 8.5Z"/>`;
+  const drops = (c="#4aa3ff") => `<g stroke="${c}" stroke-width="1.9">`
+    + `<line x1="9" y1="19.6" x2="8.2" y2="22.2"/><line x1="12.6" y1="19.6" x2="11.8" y2="22.2"/>`
+    + `<line x1="16.2" y1="19.6" x2="15.4" y2="22.2"/></g>`;
+
+  if(code === 0)                       return S + sun + '</svg>';
+  if(code === 1 || code === 2)         return S + `<g transform="translate(3,-3) scale(.72)">${sun}</g>` + cloud(0,1.5) + '</svg>';
+  if(code === 3)                       return S + cloud(0,0) + '</svg>';
+  if(code === 45 || code === 48)       return S + cloud(0,-1.5,"#7d8794")
+    + `<g stroke="#9aa4b0" stroke-width="1.8"><line x1="5" y1="19.6" x2="19" y2="19.6"/><line x1="7" y1="22.4" x2="17" y2="22.4"/></g></svg>`;
+  if(code >= 95)                       return S + cloud(0,-1.2,"#6f7885")
+    + `<path d="M12.4 18.8 9.6 23.4h2.6l-.9 3.2 3.5-5h-2.4l1-2.8Z" fill="#f5c451" stroke="none"/></svg>`;
+  if(code >= 71 && code <= 77 || code === 85 || code === 86)
+    return S + cloud(0,-1.2) + drops("#cfe6ff") + '</svg>';
+  if(code >= 51)                       return S + cloud(0,-1.2) + drops() + '</svg>';
+  return S + cloud(0,0) + '</svg>';
+}
+
+const uvColor = u => u < 3 ? C.low : u < 6 ? C.mid : C.high;
+
+/* ---------- Väderradar: RainViewer ovanpå mörk CARTO-karta ---------- */
+function tilePos(lat, lon, z){
+  const n = Math.pow(2, z), r = Math.PI/180;
+  return { x: (lon + 180) / 360 * n,
+           y: (1 - Math.log(Math.tan(lat*r) + 1/Math.cos(lat*r)) / Math.PI) / 2 * n };
+}
+
+let radarTimer = null;
+
+// Nedbörd i mm/h → färg, ungefär som en radarskala
+function precColor(mm){
+  if(mm < 0.1)  return null;
+  if(mm < 0.3)  return [ 90,170,255, 70];
+  if(mm < 1)    return [ 45,125,255,115];
+  if(mm < 2.5)  return [ 60,215,140,145];
+  if(mm < 5)    return [245,200, 80,165];
+  if(mm < 10)   return [242,120, 60,180];
+  return              [235, 60, 60,195];
+}
+
+// Nedbördsprognos i ett rutnät av punkter runt positionen
+async function getFcGrid(){
+  const lats = [], lons = [];
+  for(let j = 0; j < FC_ROWS; j++)
+    for(let i = 0; i < FC_COLS; i++){
+      lats.push((LAT + (j - (FC_ROWS-1)/2) * FC_DLAT).toFixed(4));
+      lons.push((LON + (i - (FC_COLS-1)/2) * FC_DLON).toFixed(4));
+    }
+  const u = `https://api.open-meteo.com/v1/forecast?latitude=${lats.join(",")}`
+          + `&longitude=${lons.join(",")}&hourly=precipitation`
+          + `&timezone=${encodeURIComponent(TZ)}&forecast_days=2`;
+  const r = await fetch(u, {cache:"no-store"});
+  if(!r.ok) return null;
+  const j   = await r.json();
+  const arr = Array.isArray(j) ? j : [j];
+  if(!arr.length || !arr[0].hourly) return null;
+
+  const times = arr[0].hourly.time;
+  let s = times.indexOf(wxKey(Date.now()));
+  if(s < 0) s = 0;
+
+  const frames = [];
+  for(let k = 0; k < FC_HOURS && s + k < times.length; k++){
+    const idx = s + k;
+    frames.push({ t: times[idx],
+                  v: arr.map(a => (a.hourly.precipitation[idx] ?? 0)) });
+  }
+  return frames.length ? frames : null;
+}
+
+async function initRadar(){
+  if(!RADAR){ $("radar").style.display = "none"; return; }
+  const S = $("radar").getBoundingClientRect().width || 200;
+  const T = 256;
+  const cols = Math.ceil(S / T) + 2;
+  const c    = tilePos(LAT, LON, RADAR_ZOOM);
+  const x0   = Math.floor(c.x) - 1;
+  const y0   = Math.floor(c.y) - 1;
+  const offX = S/2 - (c.x - x0) * T;
+  const offY = S/2 - (c.y - y0) * T;
+
+  // bara rutor som faktiskt syns i rutan ritas ut
+  const cells = [];
+  for(let i = 0; i < cols; i++)
+    for(let j = 0; j < cols; j++){
+      const L = offX + i*T, Tp = offY + j*T;
+      if(L < S && L + T > 0 && Tp < S && Tp + T > 0)
+        cells.push({ x: x0+i, y: y0+j, L, T: Tp });
+    }
+
+  const grid = url => cells.map(t =>
+    `<img alt="" src="${url(t.x, t.y)}" style="left:${t.L.toFixed(0)}px;top:${t.T.toFixed(0)}px">`
+  ).join("");
+
+  $("rbase").innerHTML =
+    grid((x,y)=>`https://a.basemaps.cartocdn.com/dark_nolabels/${RADAR_ZOOM}/${x}/${y}.png`);
+
+  // pixelposition i rutan för en godtycklig koordinat
+  const px = (lat, lon) => {
+    const p = tilePos(lat, lon, RADAR_ZOOM);
+    return { x: offX + (p.x - x0) * T, y: offY + (p.y - y0) * T };
+  };
+
+  /* ---- Läge 1: nedbördsprognos framåt ---- */
+  if(RADAR_MODE === "forecast"){
+    let frames = null;
+    try{ frames = await getFcGrid(); }catch(e){ frames = null; }
+    if(!frames) return;
+
+    const cv = $("rcanvas");
+    cv.width = Math.round(S); cv.height = Math.round(S);
+    const ctx = cv.getContext("2d");
+
+    const off  = document.createElement("canvas");
+    off.width  = FC_COLS; off.height = FC_ROWS;
+    const octx = off.getContext("2d");
+
+    // rutnätets hörn i pixlar
+    const nw = px(LAT + (FC_ROWS-1)/2 * FC_DLAT, LON - (FC_COLS-1)/2 * FC_DLON);
+    const se = px(LAT - (FC_ROWS-1)/2 * FC_DLAT, LON + (FC_COLS-1)/2 * FC_DLON);
+    const dx = nw.x - (se.x - nw.x) / (FC_COLS-1) / 2;      // en halv cell utanför
+    const dy = nw.y - (se.y - nw.y) / (FC_ROWS-1) / 2;
+    const dw = (se.x - nw.x) * FC_COLS / (FC_COLS-1);
+    const dh = (se.y - nw.y) * FC_ROWS / (FC_ROWS-1);
+
+    let i = 0;
+    clearTimeout(radarTimer);
+    const step = ()=>{
+      const fr  = frames[i];
+      const img = octx.createImageData(FC_COLS, FC_ROWS);
+      for(let j = 0; j < FC_ROWS; j++)
+        for(let k = 0; k < FC_COLS; k++){
+          const c = precColor(fr.v[j*FC_COLS + k] || 0);
+          const p = ((FC_ROWS-1-j) * FC_COLS + k) * 4;       // rad 0 = nordligast
+          if(c){ img.data[p]=c[0]; img.data[p+1]=c[1]; img.data[p+2]=c[2]; img.data[p+3]=c[3]; }
+        }
+      octx.putImageData(img, 0, 0);
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(off, dx, dy, dw, dh);
+
+      $("rtime").textContent = fr.t.slice(11,16) + (i === 0 ? " nu" : "");
+      const last = i === frames.length - 1;
+      i = (i + 1) % frames.length;
+      radarTimer = setTimeout(step, last ? RADAR_PAUSE : RADAR_MS);
+    };
+    step();
+    return;
+  }
+
+  /* ---- Läge 2: verklig radar bakåt ---- */
+  try{
+    const r = await fetch("https://api.rainviewer.com/public/weather-maps.json", {cache:"no-store"});
+    if(!r.ok) return;
+    const j = await r.json();
+    const past = (j.radar && j.radar.past)    || [];
+    const soon = (j.radar && j.radar.nowcast) || [];
+    const frames = past.slice(-RADAR_FRAMES).concat(soon)
+      .map(fr => ({ time: fr.time, path: fr.path, forecast: soon.indexOf(fr) >= 0 }));
+    if(!frames.length) return;
+
+    $("rlayers").innerHTML = frames.map(fr =>
+      `<div>${grid((x,y)=>`${j.host}${fr.path}/256/${RADAR_ZOOM}/${x}/${y}/2/1_1.png`)}</div>`
+    ).join("");
+
+    const layers = $("rlayers").children;
+    let i = 0;
+    clearTimeout(radarTimer);
+    const step = ()=>{
+      for(let k = 0; k < layers.length; k++) layers[k].style.opacity = (k === i) ? 1 : 0;
+      const fr = frames[i];
+      $("rtime").textContent = timeFmt.format(fr.time * 1000) + (fr.forecast ? " prognos" : "");
+      const last = i === frames.length - 1;
+      i = (i + 1) % frames.length;
+      radarTimer = setTimeout(step, last ? RADAR_PAUSE : RADAR_MS);
+    };
+    step();
+  }catch(e){ /* radarn får vara tom om anropet fallerar */ }
+}
+
+/* ---------- Trafikläge från Trafikverket ---------- */
+async function getRoad(){
+  if(!TRV_KEY) return null;
+  const q = `<REQUEST><LOGIN authenticationkey="${TRV_KEY}"/>`
+    + `<QUERY objecttype="Situation" schemaversion="1.5" limit="300"><FILTER><AND>`
+    + `<OR>${TRV_ROADS.map(r=>`<EQ name="Deviation.RoadNumber" value="${r}"/>`).join("")}</OR>`
+    + `<GT name="Deviation.EndTime" value="$now"/>`
+    + `</AND></FILTER>`
+    + ["Message","MessageCode","MessageType","LocationDescriptor","RoadNumber","StartTime","EndTime"]
+        .map(k=>`<INCLUDE>Deviation.${k}</INCLUDE>`).join("")
+    + `</QUERY></REQUEST>`;
+  try{
+    const r = await fetch("https://api.trafikinfo.trafikverket.se/v2/data.json",
+                          {method:"POST", headers:{"Content-Type":"text/xml"}, body:q});
+    if(!r.ok) return null;
+    const j = await r.json();
+    const res = j && j.RESPONSE && j.RESPONSE.RESULT && j.RESPONSE.RESULT[0];
+    if(!res || res.ERROR){ console.warn("Trafikverket:", res && res.ERROR); return null; }
+    return (res.Situation || []).reduce((a,s)=> a.concat(s.Deviation || []), []);
+  }catch(e){ return null; }
+}
+
+function roadStatus(devs){
+  if(!devs) return { state:"unknown" };
+  const now = Date.now();
+  const shut = devs.filter(d=>{
+    const txt = [d.Message, d.LocationDescriptor, d.MessageCode, d.MessageType]
+                  .filter(Boolean).join(" ");
+    return TRV_PLACE.test(txt) && /avstäng|stängd|stängs|spärrad/i.test(txt);
+  });
+  const active = shut.filter(d => Date.parse(d.StartTime) <= now
+                              && (!d.EndTime || Date.parse(d.EndTime) >= now));
+  if(active.length) return { state:"closed", until: active[0].EndTime };
+  const next = shut.filter(d => Date.parse(d.StartTime) > now)
+                   .sort((a,b)=> Date.parse(a.StartTime) - Date.parse(b.StartTime))[0];
+  if(next) return { state:"soon", from: next.StartTime };
+  return { state:"open" };
+}
+
+// Vägbom: fälld när infarten är avstängd, uppfälld när den är öppen
+function gateSvg(state){
+  const col = state === "closed" ? C.high
+            : state === "soon"   ? C.mid
+            : state === "open"   ? C.low : C.dim;
+  const ang = state === "closed" ? 0 : state === "unknown" ? -34 : -66;
+  const bar = `<rect x="12" y="11.5" width="52" height="7" rx="2.5" fill="${col}"/>`
+    + `<g fill="${C.bg}" opacity=".85">`
+    + [24, 38, 52].map(x=>`<rect x="${x}" y="11.5" width="5" height="7"/>`).join("")
+    + `</g>`;
+  return `<svg viewBox="0 -36 70 82" aria-hidden="true">`
+    + `<g fill="${C.dim}">`
+    +   `<rect x="2" y="38" width="20" height="5.5" rx="2.75"/>`
+    +   `<rect x="9" y="13" width="6.5" height="26" rx="2"/>`
+    + `</g>`
+    + `<g transform="rotate(${ang} 12.5 15)">${bar}</g>`
+    + `</svg>`;
+}
+
+function roadHtml(){
+  const s = TRV_DEMO ? { state: TRV_DEMO } : roadStatus(road);
+  const txt = {
+    closed : `<b>Stängd</b>` + (s.until ? `<em>öppnar ${timeFmt.format(Date.parse(s.until))}</em>` : `<em>${TRV_LABEL}</em>`),
+    soon   : `<b>Öppen</b><em>stängs ${s.from ? timeFmt.format(Date.parse(s.from)) : TRV_LABEL}</em>`,
+    open   : `<b>Öppen</b><em>${TRV_LABEL}</em>`,
+    unknown: `<b>Okänt</b><em>${TRV_KEY ? TRV_LABEL : "ingen API-nyckel"}</em>`
+  }[s.state];
+  return gateSvg(s.state) + `<div>${txt}</div>`;
+}
+
+// Soluppgång och solnedgång, tiderna kommer redan i lokal tid
+function sunHtml(){
+  if(!weather || !weather.rise || !weather.set) return "";
+  const hm = s => s.slice(11,16);
+  const up = `<svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="4.2" fill="${C.mid}"/>`
+    + `<g stroke="${C.mid}" stroke-width="1.8" stroke-linecap="round">`
+    + `<line x1="12" y1="3.4" x2="12" y2="6"/><line x1="4.6" y1="6.4" x2="6.4" y2="8.2"/>`
+    + `<line x1="19.4" y1="6.4" x2="17.6" y2="8.2"/><line x1="2.6" y1="13" x2="5" y2="13"/>`
+    + `<line x1="19" y1="13" x2="21.4" y2="13"/></g>`
+    + `<line x1="2.5" y1="20.5" x2="21.5" y2="20.5" stroke="${C.dim}" stroke-width="1.8" stroke-linecap="round"/></svg>`;
+  const down = `<svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="4.2" fill="${C.high}"/>`
+    + `<g stroke="${C.high}" stroke-width="1.8" stroke-linecap="round">`
+    + `<line x1="2.6" y1="13" x2="5" y2="13"/><line x1="19" y1="13" x2="21.4" y2="13"/></g>`
+    + `<line x1="2.5" y1="20.5" x2="21.5" y2="20.5" stroke="${C.dim}" stroke-width="1.8" stroke-linecap="round"/></svg>`;
+  return `<div class="sun">${up}<span>${hm(weather.rise)}</span>`
+       + `${down}<span>${hm(weather.set)}</span></div>`;
+}
+
+// "Snygga" steg på y-axeln
+function niceTicks(min, max, count){
+  const raw = (max - min) / Math.max(1, count);
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1,2,2.5,5,10].map(m=>m*mag).find(s=>s >= raw) || 10*mag;
+  const out = [];
+  for(let v = Math.ceil(min/step)*step; v <= max; v += step) out.push(Math.round(v*100)/100);
+  return out;
+}
+
+function render(rows, tomorrowExists){
+  $("msg").style.display = "none";      // synlig först, så mätningarna nedan blir rätt
+  $("app").style.display = "flex";
+
+  const now    = Date.now();
+  const series = bucketize(rows);
+  const vals   = series.map(s => s.v);
+  const lo = Math.min(...vals), hi = Math.max(...vals);
+  const avg = vals.reduce((a,b)=>a+b,0) / vals.length;
+  const iMin = vals.indexOf(lo), iMax = vals.indexOf(hi);
+
+  const t0 = Date.parse(rows[0].time_start);
+  const t1 = Date.parse(rows[rows.length-1].time_end);
+  const X  = t => ((t - t0) / (t1 - t0)) * W;
+
+  const span = (hi - lo) || Math.max(1, Math.abs(hi) * .1);
+  const yTop = hi + span * 0.34;      // luft överst till prissiffran
+  const yBot = lo - span * 0.30;
+  const Y  = v => H - ((v - yBot) / (yTop - yBot)) * H;
+
+  // ---- Aktuellt pris: exakt, från rådata ----
+  let iRaw = rows.findIndex(r => now >= Date.parse(r.time_start) && now < Date.parse(r.time_end));
+  if(iRaw < 0) iRaw = now < t0 ? 0 : rows.length - 1;
+  const nowVal = priceOf(rows[iRaw]);
+
+  // ---- Mjuk kurva genom intervallens mittpunkter ----
+  const p = series.map(s => ({ x: X((s.t0 + s.t1)/2), y: Y(s.v) }));
+  p.unshift({ x: 0, y: p[0].y });                    // förläng ut till kanterna
+  p.push({ x: W, y: p[p.length-1].y });
+
+  const k = Math.max(0, Math.min(1, SMOOTHING)) / 6;
+  let d = `M${f(p[0].x)},${f(p[0].y)}`;
+  for(let i = 0; i < p.length - 1; i++){
+    const p0 = p[i-1] || p[i], p1 = p[i], p2 = p[i+1], p3 = p[i+2] || p[i+1];
+    if(!k){ d += `L${f(p2.x)},${f(p2.y)}`; continue; }
+    d += `C${f(p1.x + (p2.x-p0.x)*k)},${f(p1.y + (p2.y-p0.y)*k)} `
+       + `${f(p2.x - (p3.x-p1.x)*k)},${f(p2.y - (p3.y-p1.y)*k)} `
+       + `${f(p2.x)},${f(p2.y)}`;
+  }
+  const area = `${d}L${W},${H}L0,${H}Z`;
+
+  const stops = series.map(s=>
+    `<stop offset="${(X((s.t0+s.t1)/2) / W * 100).toFixed(2)}%" stop-color="${colorFor(s.v,lo,hi)}"/>`
+  ).join("");
+
+  // Rådata som tunn spökkurva bakom den utjämnade linjen
+  let ghost = "";
+  if(RAW_GHOST && rows.length > series.length){
+    ghost = rows.map((r,i)=>{
+      const x = X((Date.parse(r.time_start) + Date.parse(r.time_end)) / 2);
+      return `${i ? "L" : "M"}${f(x)},${f(Y(priceOf(r)))}`;
+    }).join("");
+  }
+
+  // ---- Rutnät: lodrätt per heltimme, vågrätt per y-steg ----
+  // Med stor axeltext ryms inte alla 24 timmar – hoppa över var n:te etikett
+  const hours = Math.round((t1 - t0) / 36e5);
+  const axFS  = parseFloat(getComputedStyle($("axis")).fontSize) || 14;
+  const axW   = $("axis").getBoundingClientRect().width || window.innerWidth * 0.8;
+  const lblStep = Math.max(1, Math.ceil(hours * axFS * 2.4 / Math.max(120, axW)));
+
+  let vgrid = "", xlabels = "";
+  const lblHours = [], allHours = [];
+  for(let h = 0; h <= hours; h++){
+    const hs = t0 + h*36e5, x = X(hs), pct = x / W * 100;
+    if(h < hours){
+      // väderkolumnen står rakt under timsiffran på x-axeln
+      allHours.push({ h, hs, pct: pct.toFixed(3),
+                      dx: pct < 1.5 ? "0%" : pct > 98.5 ? "-100%" : "-50%" });
+    }
+    // en linje per timetikett, så inga "extra" linjer utan siffra
+    if(h > 0 && h < hours && h % lblStep === 0)
+      vgrid += `<line x1="${f(x)}" y1="0" x2="${f(x)}" y2="${H}"/>`;
+    if(h % lblStep === 0 && h < hours){
+      const dx = pct < 1.5 ? "0%" : pct > 98.5 ? "-100%" : "-50%";
+      xlabels += `<span style="left:${pct.toFixed(3)}%;transform:translateX(${dx})">`
+               + `${timeFmt.format(hs).slice(0,2)}</span>`;
+      lblHours.push({ h, hs, pct: pct.toFixed(3), dx });
+    }
+  }
+
+  // ---- Väder under x-axeln ----
+  let wxHtml = "";
+  if(weather){
+    // textstorleken anpassas till kolumnbredden, så alla timmar får plats
+    const wxStep = Math.max(1, WX_STEP);
+    const colW   = Math.max(14, axW / hours * wxStep);
+    const fsPx   = Math.max(8, Math.min(WX_MAX_FS, colW / 2.7));
+    const showMm = colW > fsPx * 6;
+    $("wx").style.fontSize = fsPx.toFixed(1) + "px";
+    $("wx").style.minHeight = (fsPx * 5.6).toFixed(0) + "px";
+
+    // sol upp/ner som decimaltimmar, för att välja sol- eller månikon
+    const asH  = s => s ? parseInt(s.slice(11,13),10) + parseInt(s.slice(14,16),10)/60 : null;
+    const rise = asH(weather.rise), set = asH(weather.set);
+
+    wxHtml = allHours.filter(o => o.h % wxStep === 0).map(o=>{
+      const w = weather.h.get(wxKey(o.hs));
+      if(!w) return "";
+      const hh    = parseInt(hourKey.format(o.hs), 10);
+      const night = (rise != null && set != null)
+                  ? (hh + 0.5 < rise || hh + 0.5 >= set)
+                  : (hh < 6 || hh >= 21);
+      const pop   = Number.isFinite(w.pop)
+        ? `<i style="color:${w.pop >= 40 ? C.neg : C.dim}">${Math.round(w.pop)} %`
+          + (showMm && w.prec >= 0.1 ? ` · ${w.prec.toFixed(1)} mm` : ``) + `</i>`
+        : "";
+      const uv    = Number.isFinite(w.uv)
+        ? `<i style="color:${w.uv < 1 ? C.dim : uvColor(w.uv)}">UV ${Math.round(w.uv)}</i>` : "";
+      const wind  = Number.isFinite(w.wind)
+        ? `<i style="color:${w.wind >= 10 ? C.mid : C.dim}">${w.wind.toFixed(0)} m/s</i>` : "";
+      return `<div style="left:${o.pct}%;transform:translateX(${o.dx})">`
+           + wxIcon(w.code, night) + `<b>${Math.round(w.temp)}°</b>${pop}${wind}${uv}</div>`;
+    }).join("");
+  }
+  $("wx").innerHTML = wxHtml;
+  $("road").innerHTML = roadHtml() + sunHtml();
+
+  // Lika för y-axeln: inte fler steg än vad höjden räcker till
+  const plotH = $("svg").getBoundingClientRect().height || 300;
+  const yFS   = parseFloat(getComputedStyle($("yaxis")).fontSize) || 14;
+  // Y-axeln i kronor
+  const ticks = niceTicks(yBot/100, yTop/100,
+                          Math.min(Y_TICKS, Math.max(2, Math.floor(plotH / (yFS * 2.1)))));
+  const hgrid = ticks.map(v => `<line x1="0" y1="${f(Y(v*100))}" x2="${W}" y2="${f(Y(v*100))}"/>`).join("");
+  $("yaxis").innerHTML = ticks.map(v =>
+    `<span style="top:${(Y(v*100)/H*100).toFixed(3)}%">${kr(v)}</span>`).join("");
+
+  const xNow = f(X(Math.min(Math.max(now, t0), t1)));
+
+  $("svg").innerHTML = `
+    <defs>
+      <linearGradient id="stroke" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="${W}" y2="0">${stops}</linearGradient>
+      <linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#ffffff" stop-opacity=".15"/>
+        <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    ${GRID ? `<g stroke="${C.line}" stroke-width="1" vector-effect="non-scaling-stroke">${vgrid}${hgrid}</g>` : ""}
+    ${AVG_LINE ? `<line x1="0" y1="${f(Y(avg))}" x2="${W}" y2="${f(Y(avg))}" stroke="${C.avg}" stroke-width="1.5"
+          stroke-dasharray="7 7" vector-effect="non-scaling-stroke" opacity=".85"/>` : ""}
+    ${AREA_FILL ? `<path d="${area}" fill="url(#fill)"/>` : ""}
+    ${ghost ? `<path d="${ghost}" fill="none" stroke="${C.fg}" stroke-width="1" opacity=".26"
+          stroke-linejoin="round" vector-effect="non-scaling-stroke"/>` : ""}
+    <path d="${d}" fill="none" stroke="url(#stroke)" stroke-width="2.5"
+          stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+    ${DIM_PAST ? `<rect x="0" y="0" width="${xNow}" height="${H}" fill="${C.bg}" opacity=".5"/>` : ""}
+    <line id="nowline" x1="${xNow}" y1="0" x2="${xNow}" y2="${H}" stroke="${C.now}" stroke-width="1.5"
+          vector-effect="non-scaling-stroke" opacity=".9"/>
+  `;
+  $("axis").innerHTML = xlabels;
+
+  // ---- Punkter i diagrammet: lägst, högst och just nu ----
+  let marks = "";
+  if(MARKERS){
+    const bNow = series.find(s => now >= s.t0 && now < s.t1) || series[series.length-1];
+    const pts = [
+      { x:X((series[iMax].t0+series[iMax].t1)/2), y:Y(hi),      c:colorFor(hi,lo,hi),
+        txt:`${kr(hi/100)}<em>${timeFmt.format(series[iMax].t0)}</em>`, up:true  },
+      { x:X((series[iMin].t0+series[iMin].t1)/2), y:Y(lo),      c:colorFor(lo,lo,hi),
+        txt:`${kr(lo/100)}<em>${timeFmt.format(series[iMin].t0)}</em>`, up:false },
+      { x:X(Math.min(Math.max(now,t0),t1)),       y:Y(bNow.v),  c:C.fg,
+        txt:`<em>nu</em>`, up:true, skipIfNear:true }
+    ];
+    // Placera etiketterna så att de inte hamnar ovanpå varandra eller utanför kanten
+    const placed = [], dots = [];
+    marks = pts.map(m=>{
+      const L = Math.max(0, Math.min(100, m.x / W * 100));
+      const T = Math.max(0, Math.min(100, m.y / H * 100));
+
+      // "nu"-punkten hoppas över om den ändå ligger ovanpå lägst/högst
+      if(m.skipIfNear && dots.some(p => Math.abs(p.L - L) < 2 && Math.abs(p.T - T) < 4)) return "";
+      dots.push({ L, T });
+
+      const dot = `<i class="mark" style="left:${L.toFixed(2)}%;top:${T.toFixed(2)}%;background:${m.c}"></i>`;
+
+      let dir = m.up ? -1 : 1;                       // -1 = ovanför punkten, 1 = under
+      if(dir === -1 && T < 14) dir = 1;              // för nära överkanten
+      if(dir ===  1 && T > 86) dir = -1;             // för nära underkanten
+      const clash = dd => placed.some(p => p.dir === dd && Math.abs(p.L - L) < 15);
+      if(clash(dir)) dir = -dir;
+      if(clash(dir)) return dot;                     // ingen plats kvar: visa bara punkten
+      placed.push({ L, dir });
+
+      const dx = L < 9 ? "0%" : L > 91 ? "-100%" : "-50%";
+      const dy = dir === -1 ? "-190%" : "90%";
+      return dot
+           + `<span class="mtag" style="left:${L.toFixed(2)}%;top:${T.toFixed(2)}%;`
+           + `transform:translate(${dx},${dy})">${m.txt}</span>`;
+    }).join("");
+  }
+  // ---- Aktuellt pris, fastsatt på det röda strecket ----
+  const nowL = X(Math.min(Math.max(now, t0), t1)) / W * 100;
+  const nowDx = nowL < 12 ? "0%" : nowL > 88 ? "-100%" : "-50%";
+  const nowTag = `<div class="nowtag" style="left:${nowL.toFixed(2)}%;transform:translate(${nowDx},0)">`
+    + `<b style="color:${colorFor(nowVal, lo, hi)}">${kr(nowVal/100)}<em>kr</em></b>`
+    + `<i>${timeFmt.format(Date.parse(rows[iRaw].time_start))}`
+    + `–${timeFmt.format(Date.parse(rows[iRaw].time_end))}</i></div>`;
+
+  $("marks").innerHTML = nowTag + marks;
+
+  // Låt strecket börja precis under prissiffran istället för i toppen
+  try{
+    const tag = $("marks").firstElementChild;
+    const plotPx = $("svg").getBoundingClientRect().height;
+    const line = document.getElementById("nowline");
+    if(tag && line && plotPx > 0){
+      const frac = Math.min(0.5, (tag.getBoundingClientRect().height + 8) / plotPx);
+      line.setAttribute("y1", (frac * H).toFixed(1));
+    }
+  }catch(e){}
+
+}
+
+let weather = null, road = null;
+let lastRows = null, lastTom = false, rzTimer;
+window.addEventListener("resize", ()=>{
+  clearTimeout(rzTimer);
+  rzTimer = setTimeout(()=>{ if(lastRows) render(lastRows, lastTom); }, 250);
+});
+
+async function load(){
+  const today = await getDay(0);
+  if(!today){
+    $("app").style.display = "none";
+    $("msg").style.display = "block";
+    $("msg").innerHTML = "Kunde inte hämta elpriser.<br>Försöker igen om en stund.";
+    return;
+  }
+  const [tomorrow, wx, rd] = await Promise.all([getDay(1), getWeather(), getRoad()]);
+  if(wx) weather = wx;                       // behåll gammalt väder om hämtningen fallerar
+  road = rd;
+  lastRows = today; lastTom = !!tomorrow;
+  render(today, !!tomorrow);
+}
+
+load().then(initRadar);
+setInterval(load, REFRESH_MS);
+setInterval(initRadar, 10 * 60 * 1000);   // nya radarbilder var tionde minut
+</script>
+</body>
+</html>
