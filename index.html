@@ -1,801 +1,1161 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="sv">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Elpris SE3</title>
+<title>Tollare → Stockholm · Reseplanerare</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <style>
   :root{
-    --bg:#0d0f12;
-    --fg:#f2f4f7;
-    --dim:#7d8794;
-    --line:#242a31;
-    --low:#3ddc84;
-    --mid:#f5c451;
-    --high:#f2603c;
-    --now:#ff3b30;         /* lodräta strecket för aktuell tid */
-    --avg:#ff3b30;         /* streckade linjen för dygnets snitt */
-    --ylab:clamp(72px,10vw,190px);  /* bredd på y-axelns etikettkolumn */
-    --axis-size:clamp(32px,4.2vw,48px); /* textstorlek på x- och y-axeln */
+    --bg:#0a0e13; --panel:#111823; --panel2:#0e141d; --line:#1e293b;
+    --text:#e9eff7; --muted:#8497ad; --dim:#5b6b80;
+    --ok:#33d17f; --warn:#f0b429; --bad:#ff7a3c; --crit:#ff4d5e; --accent:#4da3ff;
+    --r:14px;
   }
-  *{box-sizing:border-box;margin:0;padding:0}
-  html,body{height:100%}
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
   body{
-    background:var(--bg); color:var(--fg);
-    font-family:"Inter",-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-    font-variant-numeric:tabular-nums;
-    display:flex; flex-direction:column;
-    padding:clamp(10px,2.2vw,26px);
-    gap:clamp(8px,1.6vh,18px);
-    overflow:hidden;
+    background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,Helvetica,Arial,sans-serif;
+    font-variant-numeric:tabular-nums; overflow:hidden;
+    font-size:clamp(12px,1.05vh,17px);
   }
+  #app{height:100%;display:flex;flex-direction:column;gap:.7vh;padding:1.1vh 1.2vw}
 
-  /* aktuellt pris, sitter fast på det röda strecket i diagrammet */
-  .nowtag{position:absolute; top:0; text-align:center; line-height:.95; white-space:nowrap;
-          text-shadow:0 0 10px var(--bg), 0 0 5px var(--bg), 0 0 2px var(--bg)}
-  .nowtag b{display:block; font-size:clamp(30px,5.6vw,86px); font-weight:650; letter-spacing:-.02em}
-  .nowtag em{font-style:normal; font-size:.34em; font-weight:600; color:var(--dim); margin-left:.18em}
-  .nowtag i{display:block; font-style:normal; font-weight:500; color:var(--dim);
-            font-size:clamp(11px,1.5vw,20px); margin-top:.25em; letter-spacing:.02em}
+  /* Bara uppdateringstiden — DAKboard har egen klocka och rubrik. */
+  header{display:flex;justify-content:flex-end;flex:0 0 auto}
+  .stamp{color:var(--muted);font-size:1em;text-align:right;line-height:1.3}
+  .stamp b{color:var(--text);font-weight:600}
+  .stale{color:var(--warn)} .err{color:var(--crit)}
 
-  /* ---- Diagram ---- */
-  .chart-wrap{flex:1 1 auto; display:flex; flex-direction:column; min-height:0; gap:5px}
-  .plot{position:relative; flex:1 1 auto; min-height:0; padding-left:var(--ylab)}
-  #svg{width:100%; height:100%; display:block}
+  /* Banderollen sitter i kartkolumnen, ovanför kartan, och är därmed
+     exakt lika bred som den. */
+  .banner{flex:0 0 auto;border-radius:var(--r);padding:.9vh 1vw;
+    display:flex;align-items:center;gap:.9vw;border:1px solid var(--line);background:var(--panel)}
+  .banner>div:last-child{min-width:0}
+  .banner .dot{width:1.35em;height:1.35em;border-radius:50%;flex:0 0 auto;
+    box-shadow:0 0 0 .3em rgba(255,255,255,.05)}
+  .banner .btitle{font-size:1.4em;font-weight:700;letter-spacing:-.01em;line-height:1.2;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .banner .bmsg{color:var(--muted);font-size:1.02em;line-height:1.3;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .banner.ok{border-color:rgba(51,209,127,.35);background:linear-gradient(90deg,rgba(51,209,127,.10),transparent 60%)}
+  .banner.ok .dot{background:var(--ok)}
+  .banner.warn{border-color:rgba(240,180,41,.45);background:linear-gradient(90deg,rgba(240,180,41,.12),transparent 60%)}
+  .banner.warn .dot{background:var(--warn)}
+  .banner.bad{border-color:rgba(255,122,60,.5);background:linear-gradient(90deg,rgba(255,122,60,.15),transparent 62%)}
+  .banner.bad .dot{background:var(--bad)}
+  .banner.crit{border-color:rgba(255,77,94,.6);background:linear-gradient(90deg,rgba(255,77,94,.18),transparent 65%)}
+  .banner.crit .dot{background:var(--crit);animation:pulse 1.6s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
 
-  /* punkter och etiketter ovanpå diagrammet */
-  .marks{position:absolute; left:var(--ylab); right:0; top:0; bottom:0; pointer-events:none}
-  .mark{position:absolute; width:13px; height:13px; margin:-6.5px 0 0 -6.5px; border-radius:50%;
-        box-shadow:0 0 0 3px var(--bg)}
-  .mtag{position:absolute; font-size:clamp(14px,1.9vw,26px); font-weight:700; color:var(--fg);
-        white-space:nowrap; letter-spacing:.01em; line-height:1.15;
-        background:var(--bg); padding:.1em .4em; border-radius:6px}
-  .mtag em{color:var(--dim); font-style:normal; font-weight:600; font-size:.72em; margin-left:.4em}
+  /* Kartkolumnen får mer plats än ruttkolumnen — namnen behöver inte bredden. */
+  main{flex:1 1 auto;display:grid;grid-template-columns:0.82fr 1fr;gap:.9vw;min-height:0}
+  .col{display:flex;flex-direction:column;gap:.8vh;min-height:0}
 
-  .yaxis{position:absolute; left:0; top:0; bottom:0; width:var(--ylab);
-         font-size:var(--axis-size); color:var(--dim)}
-  .yaxis span{position:absolute; right:.45em; transform:translateY(-50%); white-space:nowrap}
+  .dest{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
+    padding:.9vh 1vw;display:flex;flex-direction:column;gap:.6vh;flex:1 1 0;min-height:0;overflow:hidden}
+  .dest h2{margin:0;font-size:1.15em;font-weight:600;color:var(--muted);
+    text-transform:uppercase;letter-spacing:.09em;display:flex;align-items:center;gap:.6em}
+  .dest h2 .km{color:var(--dim);text-transform:none;letter-spacing:0;font-weight:400}
 
-  .axis{position:relative; height:1.35em; margin-left:var(--ylab);
-        font-size:var(--axis-size); color:var(--dim)}
-  .axis span{position:absolute; top:0; transform:translateX(-50%); white-space:nowrap}
+  .route{display:grid;grid-template-columns:1fr auto auto;grid-template-rows:auto auto;
+    column-gap:1vw;row-gap:.3vh;align-items:center;padding:.55vh .2vw;border-top:1px solid var(--line)}
+  .route:first-of-type{border-top:0}
+  .rname{font-size:1.25em;font-weight:600;display:flex;align-items:center;gap:.5em;min-width:0}
+  .rname span.txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .chip{font-size:.66em;font-weight:700;letter-spacing:.06em;padding:.2em .5em;border-radius:6px;flex:0 0 auto}
+  .chip.best{background:rgba(51,209,127,.16);color:var(--ok);border:1px solid rgba(51,209,127,.4)}
+  .chip.est{background:rgba(132,151,173,.14);color:var(--muted);border:1px solid rgba(132,151,173,.3)}
+  .chip.blocked{background:rgba(255,77,94,.18);color:var(--crit);border:1px solid rgba(255,77,94,.5)}
+  body.darktiles .leaflet-tile-pane{
+    filter:invert(1) hue-rotate(180deg) brightness(.94) contrast(1.06) saturate(.55)}
+  .eta{font-size:2.05em;font-weight:700;letter-spacing:-.02em;text-align:right;line-height:1}
+  .eta u{text-decoration:none;font-size:.42em;font-weight:500;color:var(--muted);margin-left:.25em}
+  .delta{font-size:1.15em;font-weight:650;text-align:right;min-width:4.2em}
+  /* Varje delsträcka namnges i stapeln, annars går det inte att se vilken
+     del av vägen som är röd. */
+  .legbar{grid-column:1/-1;display:flex;gap:2px;height:1.85vh;border-radius:5px;overflow:hidden}
+  .legbar b{display:flex;align-items:center;justify-content:center;height:100%;min-width:0;
+    overflow:hidden;white-space:nowrap;font-size:.92em;font-weight:700;
+    color:#08111c;letter-spacing:.01em}
+  .legbar b.nodata{color:#7d8da3;background-image:repeating-linear-gradient(45deg,
+    rgba(255,255,255,.10) 0 3px,transparent 3px 6px)}
 
-  /* ---- Väderrad under x-axeln ---- */
-  /* font-size och min-height sätts av skriptet efter kolumnbredden */
-  .wx{position:relative; margin-left:var(--ylab); min-height:96px; font-size:20px}
-  .wx > div{position:absolute; top:0; text-align:center; line-height:1.15; white-space:nowrap;
-            color:var(--dim)}
-  .wx svg{display:block; margin:0 auto .14em; width:1.9em; height:1.9em}
-  .wx b{display:block; color:var(--fg); font-weight:600; font-size:1.05em}
-  .wx i{display:block; font-style:normal; font-size:.82em; margin-top:.1em}
+  #map{flex:1 1 auto;min-height:20vh;border-radius:var(--r);border:1px solid var(--line);background:#0e141d}
+  .leaflet-container{background:#0e141d;font-family:inherit}
+  .leaflet-control-attribution{background:rgba(10,14,19,.7)!important;color:#6b7c91!important;font-size:9px!important}
+  .leaflet-control-attribution a{color:#7d90a6!important}
+  .leaflet-tooltip.camnum{background:none;border:0;box-shadow:none;padding:0;margin:0;
+    color:#08111c;font:700 10px/1 inherit}
+  .leaflet-tooltip.camnum::before{display:none}
+  /* Ortnamn när kartbild saknas */
+  .placelbl{pointer-events:none;width:auto!important;height:auto!important}
+  .placelbl span{display:inline-block;color:#7b8ea6;font:500 11px/1 inherit;
+    white-space:nowrap;text-shadow:0 0 5px #0a0e13,0 0 5px #0a0e13,0 0 3px #0a0e13}
 
-  /* ---- Trafikindikator: bom i nedre vänstra hörnet ---- */
-  .road{display:flex; align-items:flex-end; gap:.7em;
-        font-size:clamp(11px,1.4vw,18px); color:var(--dim)}
-  .road svg{flex:0 0 auto; width:clamp(50px,5.5vw,86px); height:auto; display:block}
-  .road div{padding-bottom:.15em}
-  .road b{display:block; color:var(--fg); font-weight:600; font-size:1.15em;
-          letter-spacing:.06em; text-transform:uppercase}
-  .road em{font-style:normal}
-  .road .sun{display:flex; align-items:center; gap:.4em; margin-left:1.8em; padding-bottom:.35em}
-  .road .sun svg{width:1.5em; height:1.5em; flex:0 0 auto}
-  .road .sun span{color:var(--fg); font-weight:600; margin-right:.5em}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:.85vh 1vw;
+    display:flex;flex-direction:column;gap:.45vh;min-height:0;flex:0 1 auto;overflow:hidden}
+  .panel h3{margin:0 0 .2vh;font-size:1.05em;font-weight:600;color:var(--muted);
+    text-transform:uppercase;letter-spacing:.09em}
+  /* Kartan behöver höjd för att inte bli en tunn remsa — ledlistan hålls kort. */
+  #legpanel{flex:0 0 auto;max-height:16vh}
 
-  /* ---- Nedre raden: bom + sol till vänster, radar till höger ---- */
-  .bottom{display:flex; align-items:flex-end; justify-content:space-between; gap:1.2em}
-  .radar{position:relative; flex:0 0 auto; overflow:hidden; border-radius:10px;
-         width:clamp(130px,15vw,250px); height:clamp(130px,15vw,250px);
-         background:#10141a; box-shadow:0 0 0 1px var(--line)}
-  .radar img{position:absolute; width:256px; height:256px; border:0}
-  .radar > div{position:absolute; inset:0}
-  #rcanvas{position:absolute; inset:0; width:100%; height:100%}
-  #rlayers > div{position:absolute; inset:0; opacity:0; transition:opacity .16s linear}
-  .rdot{position:absolute; left:50%; top:50%; width:8px; height:8px;
-        margin:-4px 0 0 -4px; border-radius:50%; background:var(--now);
-        box-shadow:0 0 0 2px rgba(0,0,0,.65); inset:auto}
-  .rtime{position:absolute; inset:auto auto 5px 7px; color:#e6eaef; font-weight:600;
-         font-size:clamp(9px,1.05vw,14px); text-shadow:0 1px 3px #000}
-  .ratt{position:absolute; inset:auto 5px 4px auto; color:#939daa; font-size:8px; opacity:.75}
+  .legrow{display:grid;grid-template-columns:1.2em 1fr auto auto;gap:.7vw;align-items:center;
+    font-size:1.12em;padding:.18vh 0}
+  .legrow .pill{width:.75em;height:.75em;border-radius:50%}
+  .legrow .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .legrow .now{color:var(--dim);font-size:.85em;white-space:nowrap}
+  .legrow .dl{font-weight:650;min-width:4.2em;text-align:right;white-space:nowrap}
 
-  .msg{margin:auto; text-align:center; color:var(--dim); font-size:clamp(13px,1.8vw,20px); line-height:1.5}
+  .empty{color:var(--dim);font-size:1.05em;padding:.4vh 0}
+
+  .cams{flex:0 0 auto;height:21vh;min-height:0;display:grid;
+    grid-template-columns:repeat(6,1fr);gap:.7vw}
+  .cam{position:relative;margin:0;border-radius:var(--r);overflow:hidden;
+    border:1px solid var(--line);background:var(--panel2)}
+  .cam img{width:100%;height:100%;object-fit:cover;display:block}
+  .cam.dead img{display:none}
+  .cam.dead::after{content:"bild saknas";position:absolute;inset:0;display:grid;
+    place-items:center;color:var(--dim);font-size:1.05em}
+  .camtag{position:absolute;top:.6vh;right:.45vw;color:#08111c;font-weight:700;
+    font-size:.92em;padding:.15em .5em;border-radius:6px}
+  .camno{position:absolute;top:.6vh;left:.45vw;width:1.75em;height:1.75em;border-radius:6px;
+    display:grid;place-items:center;background:#cfe4ff;color:#08111c;font-weight:700;font-size:.95em}
+  .cam figcaption{position:absolute;left:0;right:0;bottom:0;padding:.6vh .6vw .7vh;
+    background:linear-gradient(transparent,rgba(5,9,14,.93) 60%);line-height:1.25}
+  .cam figcaption b{display:block;font-size:1.08em;font-weight:650;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cam figcaption em{font-style:normal;color:var(--muted);font-size:.9em;display:block;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  @media (max-aspect-ratio: 6/5){
+    main{grid-template-columns:1fr;grid-template-rows:auto auto}
+    #map{min-height:24vh} #legpanel{max-height:16vh}
+    .cams{height:32vh;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,1fr)}
+  }
+  @media (max-width:900px){ body{font-size:13px} .eta{font-size:1.7em} }
+
+  #setup{position:fixed;inset:0;background:rgba(6,9,13,.97);z-index:9999;padding:5vh 6vw;
+    overflow:auto;font-size:1.15em;line-height:1.6}
+  #setup h1{font-size:1.7em;margin:0 0 .6em}
+  #setup code{background:#16202c;padding:.15em .45em;border-radius:5px;color:#9fd0ff}
+  #setup ol{padding-left:1.4em} #setup li{margin:.5em 0}
+  #setup a{color:var(--accent)}
+  #dbg{position:fixed;right:1vw;bottom:1vh;max-width:46vw;max-height:62vh;overflow:auto;
+    background:rgba(6,9,13,.96);border:1px solid var(--line);border-radius:10px;padding:1vh 1vw;
+    font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#9fd0ff;z-index:9998;white-space:pre-wrap}
 </style>
 </head>
 <body>
 
-<div id="app" style="display:none; flex-direction:column; gap:inherit; flex:1; min-height:0">
-  <div class="chart-wrap">
-    <div class="plot">
-      <div class="yaxis" id="yaxis"></div>
-      <svg id="svg" viewBox="0 0 1000 300" preserveAspectRatio="none" aria-hidden="true"></svg>
-      <div class="marks" id="marks"></div>
+<!-- ==================================================================
+     TOLLARE → STOCKHOLM · reseplanerare för DAKboard
+     Data: Trafikverkets öppna API — TravelTimeRoute (restider) + Camera.
+     Kartbakgrund: OpenStreetMap / CARTO.
+     Fältnamn och filter är verifierade mot skarpa API-svar.
+     ================================================================== -->
+
+<div id="app">
+  <header><div class="stamp" id="stamp">startar…</div></header>
+
+  <main>
+    <div class="col" id="dests"></div>
+    <div class="col">
+      <div class="banner warn" id="banner">
+        <div class="dot"></div>
+        <div>
+          <div class="btitle" id="btitle">Hämtar trafikläget…</div>
+          <div class="bmsg" id="bmsg">Södra länken · Värmdöleden 222</div>
+        </div>
+      </div>
+      <div id="map"></div>
+      <div class="panel" id="legpanel">
+        <h3>Belastning per sträcka</h3>
+        <div id="legs"><div class="empty">–</div></div>
+      </div>
     </div>
-    <div class="axis" id="axis"></div>
-  </div>
-  <div class="wx" id="wx"></div>
-  <div class="bottom">
-    <div class="road" id="road"></div>
-    <div class="radar" id="radar">
-      <div id="rbase"></div>
-      <div id="rlayers"></div>
-      <canvas id="rcanvas"></canvas>
-      <div class="rdot"></div>
-      <div class="rtime" id="rtime"></div>
-      <div class="ratt">© OpenStreetMap · CARTO · RainViewer</div>
-    </div>
-  </div>
+  </main>
+
+  <section class="cams" id="cams"><div class="empty">hämtar kameror…</div></section>
 </div>
 
-<div class="msg" id="msg">Hämtar elpriser…</div>
-
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
-/* ==================== KONFIGURATION ====================
-   Alla belopp i öre/kWh EXKLUSIVE moms. Momsen läggs på i slutet.
-   Byt ut mot dina egna siffror från el- och nätfakturan.
-   ======================================================== */
-const ZONE        = "SE3";   // SE1 | SE2 | SE3 | SE4
-const TZ          = "Europe/Stockholm";
+/* ==================================================================== *
+ *  1. KONFIGURATION                                                     *
+ * ==================================================================== */
 
-const MARKUP_ORE  = 4.0;     // elhandlarens påslag på spotpriset
-const CERT_ORE    = 0.0;     // elcertifikat/ursprungsgarantier, om det debiteras per kWh
-const GRID_ORE    = 25.0;    // nätavgift, ÖVERFÖRINGSAVGIFTEN per kWh (ej fast abonnemang)
-const TAX_ORE     = 36.0;    // energiskatt 2026 (36 öre; 26,4 i kommuner med reducerad skatt)
-const VAT         = 1.25;    // 25 % moms
+const CONFIG = {
 
-const SHOW_TOTAL  = true;    // true = totalpris inkl. allt, false = rent spotpris
-const BUCKET_MIN  = 30;      // upplösning i kurvan: 60 = timmedel, 30 = halvtimme, 15 = varje kvart
-const SMOOTHING   = 0.6;     // 0 = raka linjer mellan punkter, 1 = maximalt mjuk kurva
-const RAW_GHOST   = false;   // tunn linje med rådata (varje kvart) bakom huvudkurvan
-const AREA_FILL   = false;   // tonad yta under kurvan
-const DIM_PAST    = false;   // tona ner tiden som redan passerat
-const MARKERS     = false;   // punkter + prislappar för dygnets lägsta/högsta och just nu
-const Y_TICKS     = 5;       // ungefärligt antal steg på y-axeln
-const GRID        = false;   // rutnätslinjer i diagrammet
-const AVG_LINE    = true;    // streckad linje för dygnets snittpris
+  /* Trafikverket-nyckel. Kan också skickas som ?key=... i adressen. */
+  apiKey: "9bb75930479f46e29df498d18b5467cf",
 
-const WEATHER     = true;    // väderrad under x-axeln (open-meteo.com, gratis, ingen nyckel)
-const LAT         = 59.3106; // Nacka, Stockholm
-const LON         = 18.1637;
+  refreshSeconds: 90,
+  reloadHours: 6,
+  matchToleranceMeters: 700,
+  staleMinutes: 8,
 
-/* Trafikläge: påfarten till Södra länken från 222 (Värmdöleden).
-   Kräver en gratis nyckel från api.trafikinfo.trafikverket.se – utan nyckel visas ingen rad. */
-const WX_STEP     = 1;       // väder var N:te timme (1 = varje timme)
-const WX_MAX_FS   = 20;      // största textstorlek i väderraden, px
+  home: { name: "Tollare, Nacka", lat: 59.3204, lon: 18.2090 },
 
-const RADAR       = false;   // kartrutan i nedre högra hörnet
-const RADAR_MODE  = "forecast";  // "forecast" = nedbördsprognos framåt (open-meteo)
-                                 // "radar"    = verklig radar 2 h bakåt (rainviewer)
-const RADAR_ZOOM  = 7;       // 6 = större område, 8 = mer inzoomat
-const RADAR_MS    = 550;     // ms per bildruta
-const RADAR_PAUSE = 1700;    // paus på sista rutan innan loopen börjar om
-const RADAR_FRAMES= 8;       // "radar": antal historiska bildrutor
+  /* --- Karta ---------------------------------------------------------
+     focus  = normalt utsnitt: pendlingskärnan Tollare–city–Solna.
+     county = hela länet, används bara för att filtrera data.
+     dynamicFit = zooma automatiskt ut så att köer (nivå 2+) och de
+     visade kamerorna alltid syns, även när de ligger på E4 syd/norr.
+     tileUrl: null = ingen kartbild från internet, bara vägnätet ur datan
+     plus ortnamn. Det är standard eftersom det ALLTID fungerar:
+       · OpenStreetMaps egna servrar blockerar appar som hämtar direkt
+         (tile usage policy) — då visas rutor med "Access blocked".
+       · CARTO:s och Stadias mörka lager kräver numera nyckel.
+     Vill du ha gatunät under: skaffa gratisnyckel hos CARTO, MapTiler
+     eller Stadia, lägg in URL:en här och sätt darkenTiles efter behov.
+     Exempel (med egen nyckel):
+       tileUrl:"https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}.png?api_key=DIN",
+       tileAttribution:"&copy; Stadia Maps &copy; OpenStreetMap",
+       darkenTiles:false
+  ------------------------------------------------------------------- */
+  map: {
+    /* Utsnittet måste ha ungefär samma proportion som kartrutan, annars
+       blåser Leaflet upp längden och allt hamnar i en klump i mitten.
+       Rutan är ca 1,8:1 → 0,08° lat (9 km) mot 0,29° lon (16 km). */
+    focus:  [[59.282,17.930],[59.362,18.220]],
+    county: [[59.15,17.62],[59.42,18.24]],
+    dynamicFit: true,
+    padWhenExpanding: 0.010,
+    tileUrl: null,
+    tileAttribution: 'trafikdata Trafikverket',
+    tileMaxZoom: 19,
+    tileSubdomains: null,
+    darkenTiles: false,
+    /* Ortnamn för orientering när kartbild saknas.
+       [lat, lon, namn, dx, dy] — dx/dy i pixlar puttar texten bort från
+       vägarna och kamerasiffrorna. Håll listan kort. */
+    places: [
+      [59.3204,18.2090,"Tollare",     10,  -4],
+      [59.3095,18.1660,"Nacka",      -14,  14],
+      [59.3195,18.0720,"Slussen",    -54, -14],
+      [59.3055,18.0240,"Liljeholmen",-80,  -2],
+      [59.2940,18.0400,"Årsta",      -16,  16],
+      [59.3435,18.0100,"Karlberg",   -62,  -2],
+      [59.3600,18.0250,"Solna",      -12, -16],
+      [59.4030,17.9440,"Kista",      -36, -16],
+      [59.2370,17.9820,"Huddinge",    10,  10],
+      [59.3720,18.3130,"Vaxholm",     10,  -4]
+    ]
+  },
 
-const FC_HOURS    = 8;       // "forecast": antal timmar framåt
-const FC_COLS     = 11;      // punkter i rutnätet, öst–väst
-const FC_ROWS     = 7;       // punkter i rutnätet, nord–syd
-const FC_DLON     = 0.26;    // avstånd mellan punkterna i grader
-const FC_DLAT     = 0.22;
+  /* --- Leder ---------------------------------------------------------
+     include = mönster mot Trafikverkets ruttnamn. Namnen bär RIKTNING:
+       "75 V ..."  = väg 75 västerut (Södra länken in mot Årsta)
+       "75 O ..."  = österut (hem mot Nacka)
+       "E4/E20 N"  = norrut,  "E4/E20 S" = söderut
+     Därför matchas bara den riktning du faktiskt kör. Utan det skulle
+     motrikningens fria flöde späda ut morgonkön till hälften.
+     km = verklig längd, styr hur kötid per km skalas.
+     Leder utan include har ingen mätning (lokalgator) → visar normaltid.
+  ------------------------------------------------------------------- */
+  legs: {
+    L222E: { name:"Värmdöleden 222 · Tollare–Nacka", short:"222", freeFlow:6, km:4,
+      include:/^222 V\b/,
+      polyline:[[59.3200,18.2130],[59.3160,18.2050],[59.3130,18.1930],[59.3105,18.1800],[59.3095,18.1660]] },
 
-const TRV_KEY     = "";
-const TRV_DEMO    = "";      // "open" | "closed" | "soon" – tvingar ett läge för att testa utseendet
-const TRV_ROADS   = ["222", "75"];                    // 222 = Värmdöleden, 75 = Södra länken
-const TRV_PLACE   = /södra länken|värmdöleden|sickla|nacka|222/i;   // vilka avstängningar som räknas
-const TRV_LABEL   = "Södra länken från 222";
-const REFRESH_MS  = 5 * 60 * 1000;
-/* ======================================================== */
+    L222W: { name:"Värmdöleden 222 · Nacka–Danvikstull", short:"222v", freeFlow:6, km:4.5,
+      include:/^222 V\b/,
+      polyline:[[59.3095,18.1660],[59.3085,18.1500],[59.3085,18.1330],[59.3105,18.1180],[59.3140,18.1040]] },
 
-const FIXED_ORE = MARKUP_ORE + CERT_ORE + GRID_ORE + TAX_ORE;
-const W = 1000, H = 300;
-const $ = id => document.getElementById(id);
-const f = n => n.toFixed(2);
-const kr = v => v.toFixed(2).replace(".", ",");   // kronor med komma, t.ex. 2,38
-const dateFmt = new Intl.DateTimeFormat("sv-SE",{timeZone:TZ,year:"numeric",month:"2-digit",day:"2-digit"});
-const timeFmt = new Intl.DateTimeFormat("sv-SE",{timeZone:TZ,hour:"2-digit",minute:"2-digit"});
+    LSL:   { name:"Södra länken västerut (väg 75)", short:"SL", freeFlow:6, km:8,
+      include:/^75 V\b/,
+      polyline:[[59.3085,18.1620],[59.3030,18.1420],[59.2975,18.1180],[59.2940,18.0930],
+                [59.2925,18.0680],[59.2950,18.0480],[59.2942,18.0330],[59.2935,18.0100]] },
 
-// SVG-attribut klarar inte var(), så färgerna läses ut som riktiga värden
-const C = {};
-["bg","fg","dim","line","low","mid","high","now","avg","neg"].forEach(k =>
-  C[k] = getComputedStyle(document.documentElement).getPropertyValue("--"+k).trim());
+    LE4LJ: { name:"E4/E20 Västberga–Liljeholmen norrut", short:"E4", freeFlow:2, km:3,
+      include:/^E4\/E20 N\b/,
+      polyline:[[59.2935,18.0100],[59.2975,18.0080],[59.3015,18.0120],[59.3045,18.0200],[59.3058,18.0240]] },
 
-function apiUrl(offsetDays){
-  const d = new Date(Date.now() + offsetDays*864e5);
-  const [y,m,day] = dateFmt.format(d).split("-");
-  return `https://www.elprisetjustnu.se/api/v1/prices/${y}/${m}-${day}_${ZONE}.json`;
-}
+    LESS:  { name:"Essingeleden norrut (E4/E20)", short:"Ess", freeFlow:5, km:6,
+      include:/^E4\/E20 N\b/,
+      polyline:[[59.3060,18.0230],[59.3100,18.0050],[59.3160,17.9950],[59.3230,17.9930],
+                [59.3310,17.9990],[59.3385,18.0070],[59.3435,18.0140]] },
 
-const spotOre = r => r.SEK_per_kWh * 100;                    // rent spotpris, exkl. moms
-const priceOf = r => SHOW_TOTAL ? (spotOre(r) + FIXED_ORE) * VAT : spotOre(r);
+    LE4N:  { name:"E4 Karlberg–Norrtull–Kista norrut", short:"E4N", freeFlow:10, km:12,
+      include:/^(E4|E20|E4\/E20) N\b/,
+      polyline:[[59.3435,18.0140],[59.3465,18.0300],[59.3480,18.0430],[59.3540,18.0360],
+                [59.3610,18.0270],[59.3680,18.0150],[59.3750,18.0030],[59.3820,17.9880],
+                [59.3890,17.9720],[59.3960,17.9560],[59.4020,17.9450]] },
 
-async function getDay(offset){
-  try{
-    const r = await fetch(apiUrl(offset), {cache:"no-store"});
-    if(!r.ok) return null;
-    const j = await r.json();
-    return Array.isArray(j) && j.length ? j : null;
-  }catch(e){ return null; }
-}
+    LE4S:  { name:"E4/E20 söderut mot Södertälje", short:"E4S", freeFlow:22, km:26,
+      include:/^E4\/E20 S\b/,
+      polyline:[[59.2925,18.0090],[59.2870,17.9880],[59.2800,17.9560],[59.2740,17.9250],
+                [59.2660,17.9020],[59.2560,17.8800],[59.2450,17.8500],[59.2360,17.8180],
+                [59.2270,17.7800],[59.2170,17.7400],[59.2060,17.6950],[59.1980,17.6600],[59.1950,17.6420]] },
 
-function colorFor(v, lo, hi){
-  const t = hi > lo ? (v - lo) / (hi - lo) : .5;
-  if(t < .34) return C.low;
-  if(t < .70) return C.mid;
-  return C.high;
-}
+    LCITY: { name:"Centralbron / Klarastrandsleden norrut", short:"Cbr", freeFlow:8, km:4.5,
+      include:/^Nord-Sydaxeln N\b|Centralbron|Klaratunneln|Klarabergsviadukten|^Norrtullstunneln|^E4\/E20 N Karlberg/,
+      polyline:[[59.3210,18.0700],[59.3260,18.0640],[59.3300,18.0600],[59.3340,18.0530],
+                [59.3390,18.0440],[59.3430,18.0330],[59.3460,18.0300]] },
 
-// Slår ihop råpriserna till jämna intervall (t.ex. timmedelvärden)
-function bucketize(rows){
-  const t0 = Date.parse(rows[0].time_start);
-  const size = BUCKET_MIN * 60000;
-  const map = new Map();
-  rows.forEach(r=>{
-    const key = Math.floor((Date.parse(r.time_start) - t0) / size);
-    if(!map.has(key)) map.set(key, []);
-    map.get(key).push(priceOf(r));
-  });
-  return [...map.keys()].sort((a,b)=>a-b).map(k=>{
-    const arr = map.get(k);
-    return { t0: t0 + k*size, t1: t0 + (k+1)*size,
-             v: arr.reduce((a,b)=>a+b,0) / arr.length };
-  });
-}
+    L226:  { name:"Huddingevägen 226 söderut", short:"226", freeFlow:28, km:20,
+      include:/^226 S\b/,
+      polyline:[[59.2900,18.0500],[59.2840,18.0380],[59.2770,18.0250],[59.2690,18.0130],
+                [59.2600,18.0020],[59.2510,17.9930],[59.2420,17.9820],[59.2350,17.9650],
+                [59.2320,17.9420],[59.2350,17.9150],[59.2400,17.8900],[59.2450,17.8650]] },
 
-/* ---------- Väder från open-meteo ---------- */
-const dayKey  = new Intl.DateTimeFormat("sv-SE",{timeZone:TZ,year:"numeric",month:"2-digit",day:"2-digit"});
-const hourKey = new Intl.DateTimeFormat("sv-SE",{timeZone:TZ,hour:"2-digit",hour12:false});
-const wxKey   = t => `${dayKey.format(t)}T${String(hourKey.format(t)).padStart(2,"0")}:00`;
+    /* --- Skärgårdsvägen via Rindö och Vaxholm ---
+       Två av Trafikverkets färjeleder. freeFlow = överfarten; väntetiden
+       räknas live ur tidtabellen (FerryAnnouncement). */
+    L222O: { name:"Värmdöleden 222 österut · Tollare–Stenslätten", short:"222ö", freeFlow:20, km:18,
+      include:/^222 O\b/,
+      polyline:[[59.3200,18.2130],[59.3230,18.2400],[59.3260,18.2700],[59.3290,18.3050],
+                [59.3320,18.3400],[59.3390,18.3700],[59.3480,18.3900]] },
 
-async function getWeather(){
-  if(!WEATHER) return null;
-  try{
-    const u = `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}`
-            + `&hourly=temperature_2m,precipitation,precipitation_probability,weather_code,uv_index,wind_speed_10m`
-            + `&daily=sunrise,sunset&wind_speed_unit=ms`
-            + `&timezone=${encodeURIComponent(TZ)}&forecast_days=2`;
-    const r = await fetch(u, {cache:"no-store"});
-    if(!r.ok) return null;
-    const j = await r.json();
-    const m = new Map();
-    j.hourly.time.forEach((t,i) => m.set(t, {
-      temp: j.hourly.temperature_2m[i],
-      prec: j.hourly.precipitation[i],
-      pop : j.hourly.precipitation_probability[i],   // regnrisk i procent
-      code: j.hourly.weather_code[i],
-      uv  : j.hourly.uv_index[i],
-      wind: j.hourly.wind_speed_10m[i]               // m/s
-    }));
-    // soltiderna kommer som "2026-09-04T06:12" i lokal tid – används som text
-    const d = j.daily || {};
-    return { h: m, rise: (d.sunrise || [])[0], set: (d.sunset || [])[0] };
-  }catch(e){ return null; }
-}
+    LFOX:  { name:"Färja Oxdjupsleden · Värmdö–Rindö", short:"färja", freeFlow:5, km:1.5,
+      include:null, ferry:{ routeId:17, from:"Värmdö" },
+      polyline:[[59.3480,18.3900],[59.3560,18.3760]] },
 
-// Ikoner ritas som svg – emoji finns inte alltid på DAKboard-enheter
-function wxIcon(code, night){
-  const S = '<svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">';
-  const sun = night
-    ? `<path d="M15.5 3.5a7.5 7.5 0 1 0 5 12.4A8.5 8.5 0 0 1 15.5 3.5Z" fill="#e8d7a3" stroke="none"/>`
-    : `<circle cx="12" cy="12" r="4.4" fill="#f5c451"/>`
-      + `<g stroke="#f5c451" stroke-width="1.8">`
-      + [[12,1.4,12,3.6],[12,20.4,12,22.6],[1.4,12,3.6,12],[20.4,12,22.6,12],
-         [4.6,4.6,6.1,6.1],[17.9,17.9,19.4,19.4],[19.4,4.6,17.9,6.1],[6.1,17.9,4.6,19.4]]
-        .map(c=>`<line x1="${c[0]}" y1="${c[1]}" x2="${c[2]}" y2="${c[3]}"/>`).join("") + `</g>`;
-  const cloud = (x=0,y=0,fill="#9aa4b0") =>
-    `<path transform="translate(${x},${y})" fill="${fill}" stroke="none"
-       d="M7.2 18.5h9.9a3.6 3.6 0 0 0 .4-7.2 5.4 5.4 0 0 0-10.2-1.3 3.9 3.9 0 0 0-.1 8.5Z"/>`;
-  const drops = (c="#4aa3ff") => `<g stroke="${c}" stroke-width="1.9">`
-    + `<line x1="9" y1="19.6" x2="8.2" y2="22.2"/><line x1="12.6" y1="19.6" x2="11.8" y2="22.2"/>`
-    + `<line x1="16.2" y1="19.6" x2="15.4" y2="22.2"/></g>`;
+    LRIN:  { name:"Rindö · Oskar-Fredriksborg–Rindöbaden", short:"Rindö", freeFlow:7, km:4,
+      include:null,
+      polyline:[[59.3560,18.3760],[59.3620,18.3560],[59.3660,18.3400],[59.3690,18.3260]] },
 
-  if(code === 0)                       return S + sun + '</svg>';
-  if(code === 1 || code === 2)         return S + `<g transform="translate(3,-3) scale(.72)">${sun}</g>` + cloud(0,1.5) + '</svg>';
-  if(code === 3)                       return S + cloud(0,0) + '</svg>';
-  if(code === 45 || code === 48)       return S + cloud(0,-1.5,"#7d8794")
-    + `<g stroke="#9aa4b0" stroke-width="1.8"><line x1="5" y1="19.6" x2="19" y2="19.6"/><line x1="7" y1="22.4" x2="17" y2="22.4"/></g></svg>`;
-  if(code >= 95)                       return S + cloud(0,-1.2,"#6f7885")
-    + `<path d="M12.4 18.8 9.6 23.4h2.6l-.9 3.2 3.5-5h-2.4l1-2.8Z" fill="#f5c451" stroke="none"/></svg>`;
-  if(code >= 71 && code <= 77 || code === 85 || code === 86)
-    return S + cloud(0,-1.2) + drops("#cfe6ff") + '</svg>';
-  if(code >= 51)                       return S + cloud(0,-1.2) + drops() + '</svg>';
-  return S + cloud(0,0) + '</svg>';
-}
+    LFVAX: { name:"Färja Vaxholmsleden · Rindö–Vaxholm", short:"färja", freeFlow:5, km:1,
+      include:null, ferry:{ routeId:21, from:"Rindö" },
+      polyline:[[59.3690,18.3260],[59.3720,18.3130]] },
 
-const uvColor = u => u < 3 ? C.low : u < 6 ? C.mid : C.high;
+    L274:  { name:"Väg 274 Vaxholm–Arninge", short:"274", freeFlow:18, km:16,
+      include:/^274 /,
+      polyline:[[59.3720,18.3130],[59.3900,18.2700],[59.4100,18.2200],[59.4300,18.1600],
+                [59.4450,18.1200],[59.4540,18.1000]] },
 
-/* ---------- Väderradar: RainViewer ovanpå mörk CARTO-karta ---------- */
-function tilePos(lat, lon, z){
-  const n = Math.pow(2, z), r = Math.PI/180;
-  return { x: (lon + 180) / 360 * n,
-           y: (1 - Math.log(Math.tan(lat*r) + 1/Math.cos(lat*r)) / Math.PI) / 2 * n };
-}
+    // E18 från Arninge går sydväst via Danderyd till Järva krog och sedan
+    // västerut mot Kista — inte den norra bågen.
+    LE18:  { name:"E18 Arninge–Danderyd–Kista", short:"E18", freeFlow:16, km:15,
+      include:/^E18 V\b/,
+      polyline:[[59.4540,18.1000],[59.4380,18.0800],[59.4200,18.0600],[59.4020,18.0400],
+                [59.3900,18.0100],[59.3820,17.9950],[59.3900,17.9600],[59.4000,17.9450]] },
 
-let radarTimer = null;
+    /* Lokalgator — Trafikverket mäter inte dessa. */
+    LSTG:  { name:"Stadsgårdsleden · Danvikstull–Slussen", short:"Stg", freeFlow:4, km:2.2,
+      include:null,
+      polyline:[[59.3140,18.1040],[59.3175,18.0930],[59.3190,18.0830],[59.3195,18.0730]] },
 
-// Nedbörd i mm/h → färg, ungefär som en radarskala
-function precColor(mm){
-  if(mm < 0.1)  return null;
-  if(mm < 0.3)  return [ 90,170,255, 70];
-  if(mm < 1)    return [ 45,125,255,115];
-  if(mm < 2.5)  return [ 60,215,140,145];
-  if(mm < 5)    return [245,200, 80,165];
-  if(mm < 10)   return [242,120, 60,180];
-  return              [235, 60, 60,195];
-}
+    LSOD:  { name:"Slussen–Liljeholmen (Hornsgatan)", short:"Horn", freeFlow:6, km:4,
+      include:null,
+      polyline:[[59.3180,18.0690],[59.3140,18.0620],[59.3110,18.0520],[59.3090,18.0400],
+                [59.3070,18.0290],[59.3055,18.0240]] }
+  },
 
-// Nedbördsprognos i ett rutnät av punkter runt positionen
-async function getFcGrid(){
-  const lats = [], lons = [];
-  for(let j = 0; j < FC_ROWS; j++)
-    for(let i = 0; i < FC_COLS; i++){
-      lats.push((LAT + (j - (FC_ROWS-1)/2) * FC_DLAT).toFixed(4));
-      lons.push((LON + (i - (FC_COLS-1)/2) * FC_DLON).toFixed(4));
-    }
-  const u = `https://api.open-meteo.com/v1/forecast?latitude=${lats.join(",")}`
-          + `&longitude=${lons.join(",")}&hourly=precipitation`
-          + `&timezone=${encodeURIComponent(TZ)}&forecast_days=2`;
-  const r = await fetch(u, {cache:"no-store"});
-  if(!r.ok) return null;
-  const j   = await r.json();
-  const arr = Array.isArray(j) ? j : [j];
-  if(!arr.length || !arr[0].hourly) return null;
+  destinations: [
+    { name:"Liljeholmsstranden 3", routes:[
+        { name:"Södra länken → Årstalänken",     legs:["L222E","LSL","LE4LJ"],                        extra:5 },
+        { name:"Genom stan · Slussen–Hornsgatan",legs:["L222E","L222W","LSTG","LSOD"],                extra:5 }
+    ]},
+    { name:"Solna / Kista", routes:[
+        { name:"Södra länken → Essingeleden",    legs:["L222E","LSL","LE4LJ","LESS","LE4N"],          extra:4 },
+        { name:"Genom stan · Centralbron",       legs:["L222E","L222W","LSTG","LCITY","LE4N"],        extra:5 },
+        { name:"Via Rindö–Vaxholm (2 färjor)",   legs:["L222O","LFOX","LRIN","LFVAX","L274","LE18"],  extra:4 }
+    ]},
+    { name:"Södertälje / E4 syd", routes:[
+        { name:"Södra länken → E4/E20 syd",      legs:["L222E","LSL","LE4S"],                         extra:5 },
+        { name:"Södra länken → Huddingevägen",   legs:["L222E","LSL","L226"],                         extra:6 }
+    ]}
+  ],
 
-  const times = arr[0].hourly.time;
-  let s = times.indexOf(wxKey(Date.now()));
-  if(s < 0) s = 0;
+  /* Banderollen: hemmasträckan in mot stan. */
+  watch: { legs:["LSL","L222E","L222W"], label:"Södra länken från Värmdöhållet" },
 
-  const frames = [];
-  for(let k = 0; k < FC_HOURS && s + k < times.length; k++){
-    const idx = s + k;
-    frames.push({ t: times[idx],
-                  v: arr.map(a => (a.hourly.precipitation[idx] ?? 0)) });
+  cameras: {
+    count: 6, maxPerLeg: 2, maxDistanceMeters: 1600,
+    fullsize: true,
+    preferType: "Trafikflödeskamera",
+    priorityLegs: ["LSL","L222E","L222W","LESS","LCITY"]
   }
-  return frames.length ? frames : null;
-}
+};
 
-async function initRadar(){
-  if(!RADAR){ $("radar").style.display = "none"; return; }
-  const S = $("radar").getBoundingClientRect().width || 200;
-  const T = 256;
-  const cols = Math.ceil(S / T) + 2;
-  const c    = tilePos(LAT, LON, RADAR_ZOOM);
-  const x0   = Math.floor(c.x) - 1;
-  const y0   = Math.floor(c.y) - 1;
-  const offX = S/2 - (c.x - x0) * T;
-  const offY = S/2 - (c.y - y0) * T;
+const ENDPOINT = "https://api.trafikinfo.trafikverket.se/v2/data.json";
 
-  // bara rutor som faktiskt syns i rutan ritas ut
-  const cells = [];
-  for(let i = 0; i < cols; i++)
-    for(let j = 0; j < cols; j++){
-      const L = offX + i*T, Tp = offY + j*T;
-      if(L < S && L + T > 0 && Tp < S && Tp + T > 0)
-        cells.push({ x: x0+i, y: y0+j, L, T: Tp });
-    }
+/* Trösklar för kvoten restid/fri restid. Kalibrerade mot skarpa data:
+   nattetid ligger hela länet på 1.00–1.15, enstaka innerstadssträckor 1.4. */
+const T = { flyter:1.15, trogt:1.40, kö:1.90 };
 
-  const grid = url => cells.map(t =>
-    `<img alt="" src="${url(t.x, t.y)}" style="left:${t.L.toFixed(0)}px;top:${t.T.toFixed(0)}px">`
-  ).join("");
+/* ==================================================================== *
+ *  2. RENA HJÄLPFUNKTIONER                                              *
+ * ==================================================================== */
+// ==PURE-START==
 
-  $("rbase").innerHTML =
-    grid((x,y)=>`https://a.basemaps.cartocdn.com/dark_nolabels/${RADAR_ZOOM}/${x}/${y}.png`);
-
-  // pixelposition i rutan för en godtycklig koordinat
-  const px = (lat, lon) => {
-    const p = tilePos(lat, lon, RADAR_ZOOM);
-    return { x: offX + (p.x - x0) * T, y: offY + (p.y - y0) * T };
-  };
-
-  /* ---- Läge 1: nedbördsprognos framåt ---- */
-  if(RADAR_MODE === "forecast"){
-    let frames = null;
-    try{ frames = await getFcGrid(); }catch(e){ frames = null; }
-    if(!frames) return;
-
-    const cv = $("rcanvas");
-    cv.width = Math.round(S); cv.height = Math.round(S);
-    const ctx = cv.getContext("2d");
-
-    const off  = document.createElement("canvas");
-    off.width  = FC_COLS; off.height = FC_ROWS;
-    const octx = off.getContext("2d");
-
-    // rutnätets hörn i pixlar
-    const nw = px(LAT + (FC_ROWS-1)/2 * FC_DLAT, LON - (FC_COLS-1)/2 * FC_DLON);
-    const se = px(LAT - (FC_ROWS-1)/2 * FC_DLAT, LON + (FC_COLS-1)/2 * FC_DLON);
-    const dx = nw.x - (se.x - nw.x) / (FC_COLS-1) / 2;      // en halv cell utanför
-    const dy = nw.y - (se.y - nw.y) / (FC_ROWS-1) / 2;
-    const dw = (se.x - nw.x) * FC_COLS / (FC_COLS-1);
-    const dh = (se.y - nw.y) * FC_ROWS / (FC_ROWS-1);
-
-    let i = 0;
-    clearTimeout(radarTimer);
-    const step = ()=>{
-      const fr  = frames[i];
-      const img = octx.createImageData(FC_COLS, FC_ROWS);
-      for(let j = 0; j < FC_ROWS; j++)
-        for(let k = 0; k < FC_COLS; k++){
-          const c = precColor(fr.v[j*FC_COLS + k] || 0);
-          const p = ((FC_ROWS-1-j) * FC_COLS + k) * 4;       // rad 0 = nordligast
-          if(c){ img.data[p]=c[0]; img.data[p+1]=c[1]; img.data[p+2]=c[2]; img.data[p+3]=c[3]; }
-        }
-      octx.putImageData(img, 0, 0);
-      ctx.clearRect(0, 0, cv.width, cv.height);
-      ctx.imageSmoothingEnabled = true;
-      ctx.drawImage(off, dx, dy, dw, dh);
-
-      $("rtime").textContent = fr.t.slice(11,16) + (i === 0 ? " nu" : "");
-      const last = i === frames.length - 1;
-      i = (i + 1) % frames.length;
-      radarTimer = setTimeout(step, last ? RADAR_PAUSE : RADAR_MS);
-    };
-    step();
-    return;
+function pickEntry(obj, names){
+  if(!obj) return null;
+  for(const n of names){
+    const v = n.split(".").reduce((o,k)=> (o==null?o:o[k]), obj);
+    if(v!==undefined && v!==null && v!=="") return { key:n, value:v };
   }
+  return null;
+}
+function pickField(obj, names){ const e=pickEntry(obj,names); return e?e.value:undefined; }
 
-  /* ---- Läge 2: verklig radar bakåt ---- */
-  try{
-    const r = await fetch("https://api.rainviewer.com/public/weather-maps.json", {cache:"no-store"});
-    if(!r.ok) return;
-    const j = await r.json();
-    const past = (j.radar && j.radar.past)    || [];
-    const soon = (j.radar && j.radar.nowcast) || [];
-    const frames = past.slice(-RADAR_FRAMES).concat(soon)
-      .map(fr => ({ time: fr.time, path: fr.path, forecast: soon.indexOf(fr) >= 0 }));
-    if(!frames.length) return;
-
-    $("rlayers").innerHTML = frames.map(fr =>
-      `<div>${grid((x,y)=>`${j.host}${fr.path}/256/${RADAR_ZOOM}/${x}/${y}/2/1_1.png`)}</div>`
-    ).join("");
-
-    const layers = $("rlayers").children;
-    let i = 0;
-    clearTimeout(radarTimer);
-    const step = ()=>{
-      for(let k = 0; k < layers.length; k++) layers[k].style.opacity = (k === i) ? 1 : 0;
-      const fr = frames[i];
-      $("rtime").textContent = timeFmt.format(fr.time * 1000) + (fr.forecast ? " prognos" : "");
-      const last = i === frames.length - 1;
-      i = (i + 1) % frames.length;
-      radarTimer = setTimeout(step, last ? RADAR_PAUSE : RADAR_MS);
-    };
-    step();
-  }catch(e){ /* radarn får vara tom om anropet fallerar */ }
+/** WKT → lista av banor med [lat,lon] (WKT skriver lon lat). */
+function parseWKT(wkt){
+  if(typeof wkt!=="string") return [];
+  const m = wkt.match(/^\s*([A-Z]+)\s*(?:Z|M|ZM)?\s*\((.*)\)\s*$/i);
+  if(!m) return [];
+  const type=m[1].toUpperCase(), body=m[2];
+  const nums = s => s.trim().split(/\s*,\s*/).map(pair=>{
+      const p=pair.replace(/^\(|\)$/g,"").trim().split(/\s+/).map(Number);
+      return [p[1],p[0]];
+    }).filter(c=> Number.isFinite(c[0]) && Number.isFinite(c[1]));
+  if(type==="POINT"||type==="LINESTRING") return [nums(body)];
+  if(type==="MULTIPOINT") return [nums(body.replace(/[()]/g,""))];
+  if(type==="MULTILINESTRING"||type==="POLYGON")
+    return (body.match(/\(([^()]*)\)/g)||[]).map(g=>nums(g.slice(1,-1))).filter(a=>a.length);
+  return [];
 }
 
-/* ---------- Trafikläge från Trafikverket ---------- */
-async function getRoad(){
-  if(!TRV_KEY) return null;
-  const q = `<REQUEST><LOGIN authenticationkey="${TRV_KEY}"/>`
-    + `<QUERY objecttype="Situation" schemaversion="1.5" limit="300"><FILTER><AND>`
-    + `<OR>${TRV_ROADS.map(r=>`<EQ name="Deviation.RoadNumber" value="${r}"/>`).join("")}</OR>`
-    + `<GT name="Deviation.EndTime" value="$now"/>`
-    + `</AND></FILTER>`
-    + ["Message","MessageCode","MessageType","LocationDescriptor","RoadNumber","StartTime","EndTime"]
-        .map(k=>`<INCLUDE>Deviation.${k}</INCLUDE>`).join("")
-    + `</QUERY></REQUEST>`;
-  try{
-    const r = await fetch("https://api.trafikinfo.trafikverket.se/v2/data.json",
-                          {method:"POST", headers:{"Content-Type":"text/xml"}, body:q});
-    if(!r.ok) return null;
-    const j = await r.json();
-    const res = j && j.RESPONSE && j.RESPONSE.RESULT && j.RESPONSE.RESULT[0];
-    if(!res || res.ERROR){ console.warn("Trafikverket:", res && res.ERROR); return null; }
-    return (res.Situation || []).reduce((a,s)=> a.concat(s.Deviation || []), []);
-  }catch(e){ return null; }
-}
-
-function roadStatus(devs){
-  if(!devs) return { state:"unknown" };
-  const now = Date.now();
-  const shut = devs.filter(d=>{
-    const txt = [d.Message, d.LocationDescriptor, d.MessageCode, d.MessageType]
-                  .filter(Boolean).join(" ");
-    return TRV_PLACE.test(txt) && /avstäng|stängd|stängs|spärrad/i.test(txt);
-  });
-  const active = shut.filter(d => Date.parse(d.StartTime) <= now
-                              && (!d.EndTime || Date.parse(d.EndTime) >= now));
-  if(active.length) return { state:"closed", until: active[0].EndTime };
-  const next = shut.filter(d => Date.parse(d.StartTime) > now)
-                   .sort((a,b)=> Date.parse(a.StartTime) - Date.parse(b.StartTime))[0];
-  if(next) return { state:"soon", from: next.StartTime };
-  return { state:"open" };
-}
-
-// Vägbom: fälld när infarten är avstängd, uppfälld när den är öppen
-function gateSvg(state){
-  const col = state === "closed" ? C.high
-            : state === "soon"   ? C.mid
-            : state === "open"   ? C.low : C.dim;
-  const ang = state === "closed" ? 0 : state === "unknown" ? -34 : -66;
-  const bar = `<rect x="12" y="11.5" width="52" height="7" rx="2.5" fill="${col}"/>`
-    + `<g fill="${C.bg}" opacity=".85">`
-    + [24, 38, 52].map(x=>`<rect x="${x}" y="11.5" width="5" height="7"/>`).join("")
-    + `</g>`;
-  return `<svg viewBox="0 -36 70 82" aria-hidden="true">`
-    + `<g fill="${C.dim}">`
-    +   `<rect x="2" y="38" width="20" height="5.5" rx="2.75"/>`
-    +   `<rect x="9" y="13" width="6.5" height="26" rx="2"/>`
-    + `</g>`
-    + `<g transform="rotate(${ang} 12.5 15)">${bar}</g>`
-    + `</svg>`;
-}
-
-function roadHtml(){
-  const s = TRV_DEMO ? { state: TRV_DEMO } : roadStatus(road);
-  const txt = {
-    closed : `<b>Stängd</b>` + (s.until ? `<em>öppnar ${timeFmt.format(Date.parse(s.until))}</em>` : `<em>${TRV_LABEL}</em>`),
-    soon   : `<b>Öppen</b><em>stängs ${s.from ? timeFmt.format(Date.parse(s.from)) : TRV_LABEL}</em>`,
-    open   : `<b>Öppen</b><em>${TRV_LABEL}</em>`,
-    unknown: `<b>Okänt</b><em>${TRV_KEY ? TRV_LABEL : "ingen API-nyckel"}</em>`
-  }[s.state];
-  return gateSvg(s.state) + `<div>${txt}</div>`;
-}
-
-// Soluppgång och solnedgång, tiderna kommer redan i lokal tid
-function sunHtml(){
-  if(!weather || !weather.rise || !weather.set) return "";
-  const hm = s => s.slice(11,16);
-  const up = `<svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="4.2" fill="${C.mid}"/>`
-    + `<g stroke="${C.mid}" stroke-width="1.8" stroke-linecap="round">`
-    + `<line x1="12" y1="3.4" x2="12" y2="6"/><line x1="4.6" y1="6.4" x2="6.4" y2="8.2"/>`
-    + `<line x1="19.4" y1="6.4" x2="17.6" y2="8.2"/><line x1="2.6" y1="13" x2="5" y2="13"/>`
-    + `<line x1="19" y1="13" x2="21.4" y2="13"/></g>`
-    + `<line x1="2.5" y1="20.5" x2="21.5" y2="20.5" stroke="${C.dim}" stroke-width="1.8" stroke-linecap="round"/></svg>`;
-  const down = `<svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="4.2" fill="${C.high}"/>`
-    + `<g stroke="${C.high}" stroke-width="1.8" stroke-linecap="round">`
-    + `<line x1="2.6" y1="13" x2="5" y2="13"/><line x1="19" y1="13" x2="21.4" y2="13"/></g>`
-    + `<line x1="2.5" y1="20.5" x2="21.5" y2="20.5" stroke="${C.dim}" stroke-width="1.8" stroke-linecap="round"/></svg>`;
-  return `<div class="sun">${up}<span>${hm(weather.rise)}</span>`
-       + `${down}<span>${hm(weather.set)}</span></div>`;
-}
-
-// "Snygga" steg på y-axeln
-function niceTicks(min, max, count){
-  const raw = (max - min) / Math.max(1, count);
-  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
-  const step = [1,2,2.5,5,10].map(m=>m*mag).find(s=>s >= raw) || 10*mag;
-  const out = [];
-  for(let v = Math.ceil(min/step)*step; v <= max; v += step) out.push(Math.round(v*100)/100);
+/** Trafikverkets geometrier har upp till flera hundra punkter. Glesa ut
+ *  dem — matchningen blir lika bra och kartan ritas långt snabbare. */
+function thin(points, max){
+  if(points.length<=max) return points.slice();
+  const step=Math.ceil(points.length/max), out=[];
+  for(let i=0;i<points.length;i+=step) out.push(points[i]);
+  const last=points[points.length-1];
+  if(out[out.length-1]!==last) out.push(last);
   return out;
 }
 
-function render(rows, tomorrowExists){
-  $("msg").style.display = "none";      // synlig först, så mätningarna nedan blir rätt
-  $("app").style.display = "flex";
-
-  const now    = Date.now();
-  const series = bucketize(rows);
-  const vals   = series.map(s => s.v);
-  const lo = Math.min(...vals), hi = Math.max(...vals);
-  const avg = vals.reduce((a,b)=>a+b,0) / vals.length;
-  const iMin = vals.indexOf(lo), iMax = vals.indexOf(hi);
-
-  const t0 = Date.parse(rows[0].time_start);
-  const t1 = Date.parse(rows[rows.length-1].time_end);
-  const X  = t => ((t - t0) / (t1 - t0)) * W;
-
-  const span = (hi - lo) || Math.max(1, Math.abs(hi) * .1);
-  const yTop = hi + span * 0.34;      // luft överst till prissiffran
-  const yBot = lo - span * 0.30;
-  const Y  = v => H - ((v - yBot) / (yTop - yBot)) * H;
-
-  // ---- Aktuellt pris: exakt, från rådata ----
-  let iRaw = rows.findIndex(r => now >= Date.parse(r.time_start) && now < Date.parse(r.time_end));
-  if(iRaw < 0) iRaw = now < t0 ? 0 : rows.length - 1;
-  const nowVal = priceOf(rows[iRaw]);
-
-  // ---- Mjuk kurva genom intervallens mittpunkter ----
-  const p = series.map(s => ({ x: X((s.t0 + s.t1)/2), y: Y(s.v) }));
-  p.unshift({ x: 0, y: p[0].y });                    // förläng ut till kanterna
-  p.push({ x: W, y: p[p.length-1].y });
-
-  const k = Math.max(0, Math.min(1, SMOOTHING)) / 6;
-  let d = `M${f(p[0].x)},${f(p[0].y)}`;
-  for(let i = 0; i < p.length - 1; i++){
-    const p0 = p[i-1] || p[i], p1 = p[i], p2 = p[i+1], p3 = p[i+2] || p[i+1];
-    if(!k){ d += `L${f(p2.x)},${f(p2.y)}`; continue; }
-    d += `C${f(p1.x + (p2.x-p0.x)*k)},${f(p1.y + (p2.y-p0.y)*k)} `
-       + `${f(p2.x - (p3.x-p1.x)*k)},${f(p2.y - (p3.y-p1.y)*k)} `
-       + `${f(p2.x)},${f(p2.y)}`;
-  }
-  const area = `${d}L${W},${H}L0,${H}Z`;
-
-  const stops = series.map(s=>
-    `<stop offset="${(X((s.t0+s.t1)/2) / W * 100).toFixed(2)}%" stop-color="${colorFor(s.v,lo,hi)}"/>`
-  ).join("");
-
-  // Rådata som tunn spökkurva bakom den utjämnade linjen
-  let ghost = "";
-  if(RAW_GHOST && rows.length > series.length){
-    ghost = rows.map((r,i)=>{
-      const x = X((Date.parse(r.time_start) + Date.parse(r.time_end)) / 2);
-      return `${i ? "L" : "M"}${f(x)},${f(Y(priceOf(r)))}`;
-    }).join("");
-  }
-
-  // ---- Rutnät: lodrätt per heltimme, vågrätt per y-steg ----
-  // Med stor axeltext ryms inte alla 24 timmar – hoppa över var n:te etikett
-  const hours = Math.round((t1 - t0) / 36e5);
-  const axFS  = parseFloat(getComputedStyle($("axis")).fontSize) || 14;
-  const axW   = $("axis").getBoundingClientRect().width || window.innerWidth * 0.8;
-  const lblStep = Math.max(1, Math.ceil(hours * axFS * 2.4 / Math.max(120, axW)));
-
-  let vgrid = "", xlabels = "";
-  const lblHours = [], allHours = [];
-  for(let h = 0; h <= hours; h++){
-    const hs = t0 + h*36e5, x = X(hs), pct = x / W * 100;
-    if(h < hours){
-      // väderkolumnen står rakt under timsiffran på x-axeln
-      allHours.push({ h, hs, pct: pct.toFixed(3),
-                      dx: pct < 1.5 ? "0%" : pct > 98.5 ? "-100%" : "-50%" });
-    }
-    // en linje per timetikett, så inga "extra" linjer utan siffra
-    if(h > 0 && h < hours && h % lblStep === 0)
-      vgrid += `<line x1="${f(x)}" y1="0" x2="${f(x)}" y2="${H}"/>`;
-    if(h % lblStep === 0 && h < hours){
-      const dx = pct < 1.5 ? "0%" : pct > 98.5 ? "-100%" : "-50%";
-      xlabels += `<span style="left:${pct.toFixed(3)}%;transform:translateX(${dx})">`
-               + `${timeFmt.format(hs).slice(0,2)}</span>`;
-      lblHours.push({ h, hs, pct: pct.toFixed(3), dx });
-    }
-  }
-
-  // ---- Väder under x-axeln ----
-  let wxHtml = "";
-  if(weather){
-    // textstorleken anpassas till kolumnbredden, så alla timmar får plats
-    const wxStep = Math.max(1, WX_STEP);
-    const colW   = Math.max(14, axW / hours * wxStep);
-    const fsPx   = Math.max(8, Math.min(WX_MAX_FS, colW / 2.7));
-    const showMm = colW > fsPx * 6;
-    $("wx").style.fontSize = fsPx.toFixed(1) + "px";
-    $("wx").style.minHeight = (fsPx * 5.6).toFixed(0) + "px";
-
-    // sol upp/ner som decimaltimmar, för att välja sol- eller månikon
-    const asH  = s => s ? parseInt(s.slice(11,13),10) + parseInt(s.slice(14,16),10)/60 : null;
-    const rise = asH(weather.rise), set = asH(weather.set);
-
-    wxHtml = allHours.filter(o => o.h % wxStep === 0).map(o=>{
-      const w = weather.h.get(wxKey(o.hs));
-      if(!w) return "";
-      const hh    = parseInt(hourKey.format(o.hs), 10);
-      const night = (rise != null && set != null)
-                  ? (hh + 0.5 < rise || hh + 0.5 >= set)
-                  : (hh < 6 || hh >= 21);
-      const pop   = Number.isFinite(w.pop)
-        ? `<i style="color:${w.pop >= 40 ? C.neg : C.dim}">${Math.round(w.pop)} %`
-          + (showMm && w.prec >= 0.1 ? ` · ${w.prec.toFixed(1)} mm` : ``) + `</i>`
-        : "";
-      const uv    = Number.isFinite(w.uv)
-        ? `<i style="color:${w.uv < 1 ? C.dim : uvColor(w.uv)}">UV ${Math.round(w.uv)}</i>` : "";
-      const wind  = Number.isFinite(w.wind)
-        ? `<i style="color:${w.wind >= 10 ? C.mid : C.dim}">${w.wind.toFixed(0)} m/s</i>` : "";
-      return `<div style="left:${o.pct}%;transform:translateX(${o.dx})">`
-           + wxIcon(w.code, night) + `<b>${Math.round(w.temp)}°</b>${pop}${wind}${uv}</div>`;
-    }).join("");
-  }
-  $("wx").innerHTML = wxHtml;
-  $("road").innerHTML = roadHtml() + sunHtml();
-
-  // Lika för y-axeln: inte fler steg än vad höjden räcker till
-  const plotH = $("svg").getBoundingClientRect().height || 300;
-  const yFS   = parseFloat(getComputedStyle($("yaxis")).fontSize) || 14;
-  // Y-axeln i kronor
-  const ticks = niceTicks(yBot/100, yTop/100,
-                          Math.min(Y_TICKS, Math.max(2, Math.floor(plotH / (yFS * 2.1)))));
-  const hgrid = ticks.map(v => `<line x1="0" y1="${f(Y(v*100))}" x2="${W}" y2="${f(Y(v*100))}"/>`).join("");
-  $("yaxis").innerHTML = ticks.map(v =>
-    `<span style="top:${(Y(v*100)/H*100).toFixed(3)}%">${kr(v)}</span>`).join("");
-
-  const xNow = f(X(Math.min(Math.max(now, t0), t1)));
-
-  $("svg").innerHTML = `
-    <defs>
-      <linearGradient id="stroke" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="${W}" y2="0">${stops}</linearGradient>
-      <linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="#ffffff" stop-opacity=".15"/>
-        <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
-      </linearGradient>
-    </defs>
-    ${GRID ? `<g stroke="${C.line}" stroke-width="1" vector-effect="non-scaling-stroke">${vgrid}${hgrid}</g>` : ""}
-    ${AVG_LINE ? `<line x1="0" y1="${f(Y(avg))}" x2="${W}" y2="${f(Y(avg))}" stroke="${C.avg}" stroke-width="1.5"
-          stroke-dasharray="7 7" vector-effect="non-scaling-stroke" opacity=".85"/>` : ""}
-    ${AREA_FILL ? `<path d="${area}" fill="url(#fill)"/>` : ""}
-    ${ghost ? `<path d="${ghost}" fill="none" stroke="${C.fg}" stroke-width="1" opacity=".26"
-          stroke-linejoin="round" vector-effect="non-scaling-stroke"/>` : ""}
-    <path d="${d}" fill="none" stroke="url(#stroke)" stroke-width="2.5"
-          stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
-    ${DIM_PAST ? `<rect x="0" y="0" width="${xNow}" height="${H}" fill="${C.bg}" opacity=".5"/>` : ""}
-    <line id="nowline" x1="${xNow}" y1="0" x2="${xNow}" y2="${H}" stroke="${C.now}" stroke-width="1.5"
-          vector-effect="non-scaling-stroke" opacity=".9"/>
-  `;
-  $("axis").innerHTML = xlabels;
-
-  // ---- Punkter i diagrammet: lägst, högst och just nu ----
-  let marks = "";
-  if(MARKERS){
-    const bNow = series.find(s => now >= s.t0 && now < s.t1) || series[series.length-1];
-    const pts = [
-      { x:X((series[iMax].t0+series[iMax].t1)/2), y:Y(hi),      c:colorFor(hi,lo,hi),
-        txt:`${kr(hi/100)}<em>${timeFmt.format(series[iMax].t0)}</em>`, up:true  },
-      { x:X((series[iMin].t0+series[iMin].t1)/2), y:Y(lo),      c:colorFor(lo,lo,hi),
-        txt:`${kr(lo/100)}<em>${timeFmt.format(series[iMin].t0)}</em>`, up:false },
-      { x:X(Math.min(Math.max(now,t0),t1)),       y:Y(bNow.v),  c:C.fg,
-        txt:`<em>nu</em>`, up:true, skipIfNear:true }
-    ];
-    // Placera etiketterna så att de inte hamnar ovanpå varandra eller utanför kanten
-    const placed = [], dots = [];
-    marks = pts.map(m=>{
-      const L = Math.max(0, Math.min(100, m.x / W * 100));
-      const T = Math.max(0, Math.min(100, m.y / H * 100));
-
-      // "nu"-punkten hoppas över om den ändå ligger ovanpå lägst/högst
-      if(m.skipIfNear && dots.some(p => Math.abs(p.L - L) < 2 && Math.abs(p.T - T) < 4)) return "";
-      dots.push({ L, T });
-
-      const dot = `<i class="mark" style="left:${L.toFixed(2)}%;top:${T.toFixed(2)}%;background:${m.c}"></i>`;
-
-      let dir = m.up ? -1 : 1;                       // -1 = ovanför punkten, 1 = under
-      if(dir === -1 && T < 14) dir = 1;              // för nära överkanten
-      if(dir ===  1 && T > 86) dir = -1;             // för nära underkanten
-      const clash = dd => placed.some(p => p.dir === dd && Math.abs(p.L - L) < 15);
-      if(clash(dir)) dir = -dir;
-      if(clash(dir)) return dot;                     // ingen plats kvar: visa bara punkten
-      placed.push({ L, dir });
-
-      const dx = L < 9 ? "0%" : L > 91 ? "-100%" : "-50%";
-      const dy = dir === -1 ? "-190%" : "90%";
-      return dot
-           + `<span class="mtag" style="left:${L.toFixed(2)}%;top:${T.toFixed(2)}%;`
-           + `transform:translate(${dx},${dy})">${m.txt}</span>`;
-    }).join("");
-  }
-  // ---- Aktuellt pris, fastsatt på det röda strecket ----
-  const nowL = X(Math.min(Math.max(now, t0), t1)) / W * 100;
-  const nowDx = nowL < 12 ? "0%" : nowL > 88 ? "-100%" : "-50%";
-  const nowTag = `<div class="nowtag" style="left:${nowL.toFixed(2)}%;transform:translate(${nowDx},0)">`
-    + `<b style="color:${colorFor(nowVal, lo, hi)}">${kr(nowVal/100)}<em>kr</em></b>`
-    + `<i>${timeFmt.format(Date.parse(rows[iRaw].time_start))}`
-    + `–${timeFmt.format(Date.parse(rows[iRaw].time_end))}</i></div>`;
-
-  $("marks").innerHTML = nowTag + marks;
-
-  // Låt strecket börja precis under prissiffran istället för i toppen
-  try{
-    const tag = $("marks").firstElementChild;
-    const plotPx = $("svg").getBoundingClientRect().height;
-    const line = document.getElementById("nowline");
-    if(tag && line && plotPx > 0){
-      const frac = Math.min(0.5, (tag.getBoundingClientRect().height + 8) / plotPx);
-      line.setAttribute("y1", (frac * H).toFixed(1));
-    }
-  }catch(e){}
-
+const R_EARTH=6371000;
+function metersBetween(a,b){
+  const la=(a[0]+b[0])/2*Math.PI/180;
+  return Math.hypot((b[1]-a[1])*Math.PI/180*Math.cos(la)*R_EARTH,
+                    (b[0]-a[0])*Math.PI/180*R_EARTH);
+}
+function pathLengthMeters(path){
+  let s=0; for(let i=1;i<path.length;i++) s+=metersBetween(path[i-1],path[i]); return s;
+}
+function pointToSegmentMeters(p,a,b){
+  const la=a[0]*Math.PI/180, k=Math.cos(la)*R_EARTH*Math.PI/180, j=R_EARTH*Math.PI/180;
+  const px=(p[1]-a[1])*k, py=(p[0]-a[0])*j, bx=(b[1]-a[1])*k, by=(b[0]-a[0])*j;
+  const L2=bx*bx+by*by;
+  if(L2===0) return Math.hypot(px,py);
+  let t=(px*bx+py*by)/L2; t=Math.max(0,Math.min(1,t));
+  return Math.hypot(px-t*bx, py-t*by);
+}
+function pointToPathMeters(p,path){
+  let best=Infinity;
+  for(let i=1;i<path.length;i++) best=Math.min(best,pointToSegmentMeters(p,path[i-1],path[i]));
+  return best;
+}
+function fractionNear(coords,path,tol){
+  if(!coords.length||path.length<2) return 0;
+  let hit=0; for(const c of coords) if(pointToPathMeters(c,path)<=tol) hit++;
+  return hit/coords.length;
 }
 
-let weather = null, road = null;
-let lastRows = null, lastTom = false, rzTimer;
-window.addEventListener("resize", ()=>{
-  clearTimeout(rzTimer);
-  rzTimer = setTimeout(()=>{ if(lastRows) render(lastRows, lastTom); }, 250);
-});
-
-async function load(){
-  const today = await getDay(0);
-  if(!today){
-    $("app").style.display = "none";
-    $("msg").style.display = "block";
-    $("msg").innerHTML = "Kunde inte hämta elpriser.<br>Försöker igen om en stund.";
-    return;
-  }
-  const [tomorrow, wx, rd] = await Promise.all([getDay(1), getWeather(), getRoad()]);
-  if(wx) weather = wx;                       // behåll gammalt väder om hämtningen fallerar
-  road = rd;
-  lastRows = today; lastTom = !!tomorrow;
-  render(today, !!tomorrow);
+/** Läser ett TravelTimeRoute-objekt.
+ *  Verifierade fältnamn (schemaversion 1.5): Id, Name, Length (m),
+ *  TravelTime (s), FreeFlowTravelTime (s), Speed (km/h), TrafficStatus,
+ *  MeasureTime, Geometry.WGS84. */
+function readRoute(o){
+  const name = pickField(o,["Name","RouteName","Description"]) || "okänd sträcka";
+  const id   = String(pickField(o,["Id"]) ?? name);
+  const paths = parseWKT(pickField(o,["Geometry.WGS84"])).map(p=>thin(p,40));
+  const coords = thin(paths.flat(), 30);
+  const len = Number(pickField(o,["Length","Distance","RouteLength"]));
+  const distance = Number.isFinite(len)&&len>0 ? len
+                 : (paths.reduce((s,p)=>s+pathLengthMeters(p),0) || null);
+  const cur = Number(pickField(o,["TravelTime","CurrentTravelTime"]));
+  const ref = Number(pickField(o,["FreeFlowTravelTime","ExpectedTravelTime"]));
+  const speed = Number(pickField(o,["Speed"]));
+  return {
+    id, name, distance, coords, paths,
+    cur: Number.isFinite(cur)&&cur>0 ? cur : null,
+    ref: Number.isFinite(ref)&&ref>0 ? ref : null,
+    speed: Number.isFinite(speed)&&speed>0 ? speed : null,
+    status: String(pickField(o,["TrafficStatus"]) || "").toLowerCase(),
+    measured: pickField(o,["MeasureTime","ModifiedTime"]),
+    raw:o
+  };
 }
 
-load().then(initRadar);
-setInterval(load, REFRESH_MS);
-setInterval(initRadar, 10 * 60 * 1000);   // nya radarbilder var tionde minut
+/** Kvot mot fri restid. 1.0 = normalt. */
+function routeRatio(r){
+  if(r.cur==null) return null;
+  if(r.ref!=null) return r.cur/r.ref;
+  if(r.distance){ return r.cur / (r.distance/(70/3.6)); }
+  return null;
+}
+
+/** Trafikverkets egen statusflagga får bara HÖJA allvaret, aldrig sänka —
+ *  vokabulären utöver "freeflow" är inte känd. */
+function statusFloor(status){
+  if(!status || status==="freeflow" || status==="unknown") return 0;
+  if(/stationary|stopped|stillast/.test(status)) return 3;
+  if(/queu|kö/.test(status)) return 2;
+  return 1;                                  // t.ex. "heavy"
+}
+function levelFromRatio(ratio){
+  if(ratio==null) return null;
+  if(ratio<T.flyter) return 0;
+  if(ratio<T.trogt)  return 1;
+  if(ratio<T.kö)     return 2;
+  return 3;
+}
+
+/** Vilka mätsträckor hör till leden? Namn (road + riktning) OCH geometri. */
+function matchLeg(routes, leg, tol){
+  if(!leg.include) return [];
+  return routes.filter(r =>
+    leg.include.test(r.name) &&
+    r.coords.length &&
+    fractionNear(r.coords, leg.polyline, tol) >= 0.5);
+}
+
+/** Kötid för en led. Viktas per km → tål överlappande mätsträckor. */
+function legDelayMinutes(matched, legKm){
+  let km=0, delayMin=0, speedNum=0, ratioNum=0, statusMax=0;
+  for(const r of matched){
+    const ratio=routeRatio(r);
+    if(ratio==null || !r.distance) continue;
+    const k=r.distance/1000;
+    const refSec = r.ref!=null ? r.ref : r.cur/ratio;
+    km += k;
+    delayMin += Math.max(0, r.cur-refSec)/60;
+    ratioNum += ratio*k;
+    if(r.speed) speedNum += r.speed*k;
+    statusMax = Math.max(statusMax, statusFloor(r.status));
+  }
+  if(km<=0) return { delay:0, coveredKm:0, ratio:null, speed:null, level:null };
+  const ratio=ratioNum/km;
+  // Nivån sätts på ledens längdviktade kvot, inte på den värsta delsträckan.
+  // En enda kort ramp med skev referenstid ska inte stämpla hela leden som
+  // stillastående. Trafikverkets egen status får däremot höja nivån.
+  const level=Math.max(levelFromRatio(ratio), statusMax);
+  return { delay:(delayMin/km)*legKm, coveredKm:km, ratio,
+           speed: speedNum? speedNum/km : null, level };
+}
+// ==PURE-END==
+
+/* ==================================================================== *
+ *  3. FÄRG OCH FORMAT                                                   *
+ * ==================================================================== */
+const C = { ok:"#33d17f", warn:"#f0b429", bad:"#ff7a3c", crit:"#ff4d5e", none:"#3a4a5e" };
+const LEVEL_COLOR = [C.ok, C.warn, C.bad, C.crit];
+const LEVEL_WORD  = ["flyter","trögt","tung kö","står still"];
+const levelColor = l => l==null ? C.none : LEVEL_COLOR[l];
+const ratioColor = r => levelColor(levelFromRatio(r));
+
+const two = n => String(n).padStart(2,"0");
+const fmtDelta = m => m==null ? "" : (m<1 ? "±0" : "+"+Math.round(m));
+const minutesAgo = t => { const d=Date.parse(t||"");
+  return Number.isFinite(d) ? Math.max(0,Math.round((Date.now()-d)/60000)) : null; };
+const esc = s => String(s==null?"":s).replace(/[&<>"']/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+/** "Kameran är placerad på E4/E20 … och är riktad mot Stockholm." → kort text */
+const shortLoc = s => String(s||"")
+  .replace(/^\s*Kameran\s+är\s+placerad\s+(på|vid|i)\s+/i,"")
+  .replace(/\s*och\s+är\s+riktad\s+mot\s+/i," → ")
+  .replace(/\.\s*$/,"");
+
+/* ==================================================================== *
+ *  4. API — objekttyper, versioner och filter är verifierade            *
+ * ==================================================================== */
+const params = new URLSearchParams(location.search);
+const DEBUG = params.has("debug");
+const MOCK  = params.has("mock");
+let apiKey = params.get("key") || CONFIG.apiKey;
+try{
+  if(params.get("key")) localStorage.setItem("tvKey", params.get("key"));
+  if(!apiKey || /^SATT_DIN/.test(apiKey)) apiKey = localStorage.getItem("tvKey") || apiKey;
+}catch(e){}
+
+async function tvQuery(objecttype, version, inner){
+  const body = `<REQUEST><LOGIN authenticationkey="${apiKey}"/>`+
+               `<QUERY objecttype="${objecttype}" schemaversion="${version}" limit="2000">`+
+               `${inner}</QUERY></REQUEST>`;
+  const res = await fetch(ENDPOINT,{method:"POST",headers:{"Content-Type":"text/xml"},body});
+  if(!res.ok) throw new Error(`HTTP ${res.status} (${objecttype})`);
+  const json = await res.json();
+  const r0 = json && json.RESPONSE && json.RESPONSE.RESULT && json.RESPONSE.RESULT[0];
+  const err = r0 && r0.ERROR && (r0.ERROR.MESSAGE || r0.ERROR);
+  if(err) throw new Error(String(err).slice(0,160));
+  if(!r0)  throw new Error("tomt svar ("+objecttype+")");
+  return r0[objecttype] || [];
+}
+
+// 192 av landets 197 mätsträckor ligger i Stockholms län (CountyNo 1).
+const ROUTE_QUERY =
+  `<FILTER><EQ name="CountyNo" value="1"/></FILTER>`+
+  ["Id","Name","Length","TravelTime","FreeFlowTravelTime","Speed","TrafficStatus",
+   "MeasureTime","Geometry.WGS84"].map(f=>`<INCLUDE>${f}</INCLUDE>`).join("");
+
+// Camera finns bara i schemaversion 1.0. Bild-URL:en måste komma från
+// PhotoUrl — att bygga den ur Id ger 404.
+const CAMERA_QUERY =
+  `<FILTER><AND><EQ name="CountyNo" value="1"/>`+
+  `<EQ name="Deleted" value="false"/><EQ name="Active" value="true"/></AND></FILTER>`+
+  ["Id","Name","Location","Type","Status","PhotoUrl","PhotoTime","HasFullSizePhoto",
+   "Direction","Geometry.WGS84"].map(f=>`<INCLUDE>${f}</INCLUDE>`).join("");
+
+// Färjeavgångar för de leder som används i någon rutt.
+function ferryRouteIds(){
+  return [...new Set(Object.values(CONFIG.legs).filter(l=>l.ferry).map(l=>l.ferry.routeId))];
+}
+// Tidsfönster krävs: utan övre gräns returneras flera dygns avgångar och
+// den andra färjeleden faller utanför träffgränsen.
+const FERRY_QUERY = () =>
+  `<FILTER><AND><GT name="DepartureTime" value="$now"/>`+
+  `<LT name="DepartureTime" value="$dateadd(04:00:00)"/><OR>`+
+  ferryRouteIds().map(id=>`<EQ name="Route.Id" value="${id}"/>`).join("")+
+  `</OR></AND></FILTER>`+
+  ["DepartureTime","FromHarbor","ToHarbor","Route"].map(f=>`<INCLUDE>${f}</INCLUDE>`).join("");
+
+const fetchRoutes  = () => tvQuery("TravelTimeRoute","1.5",ROUTE_QUERY);
+const fetchCameras = () => tvQuery("Camera","1.0",CAMERA_QUERY);
+const fetchFerries = () => tvQuery("FerryAnnouncement","1.2",FERRY_QUERY());
+
+/** Väntetid och nästa avgångar för en färjeled i vår färdriktning. */
+function ferryWait(announcements, ferry){
+  const now=Date.now();
+  const times=(announcements||[])
+    .filter(a=> a && a.Route && Number(a.Route.Id)===ferry.routeId)
+    .filter(a=> !ferry.from || (a.FromHarbor && a.FromHarbor.Name===ferry.from))
+    .map(a=> Date.parse(a.DepartureTime))
+    .filter(t=> Number.isFinite(t) && t>=now-60000)
+    .sort((a,b)=>a-b);
+  if(!times.length) return { waitMin:null, next:[] };
+  return { waitMin: Math.max(0,Math.round((times[0]-now)/60000)), next: times.slice(0,3) };
+}
+
+/* ---- kameror ------------------------------------------------------- */
+function readCamera(o){
+  const id   = String(pickField(o,["Id"]) ?? "");
+  const url  = pickField(o,["PhotoUrl"]);
+  const pt   = parseWKT(pickField(o,["Geometry.WGS84"])).flat()[0] || null;
+  const status = String(pickField(o,["Status"]) || "");
+  return {
+    id, pt, photoUrl:url,
+    name: pickField(o,["Name"]) || "",
+    loc:  pickField(o,["Location"]) || "",
+    type: pickField(o,["Type"]) || "",
+    status,
+    fullsize: pickField(o,["HasFullSizePhoto"]) !== false,
+    direction: Number(pickField(o,["Direction"])),
+    photoTime: pickField(o,["PhotoTime","ModifiedTime"]),
+    // Utan PhotoUrl finns ingen bild att visa — Id går inte att bygga URL av.
+    ok: !!(id && pt && url && /^https?:\/\//i.test(url)) &&
+        (!status || /available/i.test(status))
+  };
+}
+function cameraImageUrl(cam, fullsize){
+  const base = String(cam.photoUrl).split("?")[0];
+  const stamp = Date.parse(cam.photoTime||"") || Date.now();
+  return base+"?"+((fullsize && cam.fullsize!==false)?"type=fullsize&":"")+"maxage=1&_="+stamp;
+}
+
+/** Poängsätter kameror efter hur intressanta de är just nu. */
+function scoreCameras(cams, legs, states, cfg){
+  const out=[];
+  for(const c of cams){
+    if(!c.ok) continue;
+    let leg=null, legDist=Infinity;
+    for(const k in legs){
+      const d=pointToPathMeters(c.pt, legs[k].polyline);
+      if(d<legDist){ legDist=d; leg=k; }
+    }
+    if(!leg || legDist>cfg.maxDistanceMeters) continue;
+    const st=states[leg]||{};
+    let score = (st.delay||0)*5 + (st.level||0)*40;
+    if((cfg.priorityLegs||[]).includes(leg)) score += 8;
+    if(cfg.preferType && c.type===cfg.preferType) score += 6;
+    score -= legDist/400;
+    out.push({ ...c, leg, legDist, score });
+  }
+  out.sort((a,b)=> b.score-a.score || a.legDist-b.legDist);
+  const per={}, chosen=[];
+  for(const c of out){
+    if((per[c.leg]||0)>=cfg.maxPerLeg) continue;
+    per[c.leg]=(per[c.leg]||0)+1;
+    chosen.push(c);
+    if(chosen.length>=cfg.count) break;
+  }
+  return chosen;
+}
+
+/* ==================================================================== *
+ *  5. KARTA                                                             *
+ * ==================================================================== */
+let map, layerLegs, layerSegs, layerCam, currentFit=null;
+
+/** Utsnittet: normalt pendlingskärnan, utvidgat så att köer och de visade
+ *  kamerorna alltid ryms. Punkter utanför länet ignoreras. */
+function computeFit(points){
+  const M=CONFIG.map;
+  let [[s,w],[n,e]] = M.focus.map(p=>p.slice());
+  if(M.dynamicFit){
+    const [[cs,cw],[cn,ce]] = M.county;
+    for(const p of (points||[])){
+      if(!p || p[0]<cs || p[0]>cn || p[1]<cw || p[1]>ce) continue;
+      s=Math.min(s,p[0]-M.padWhenExpanding); n=Math.max(n,p[0]+M.padWhenExpanding);
+      w=Math.min(w,p[1]-M.padWhenExpanding); e=Math.max(e,p[1]+M.padWhenExpanding);
+    }
+  }
+  return [[s,w],[n,e]];
+}
+function applyFit(bounds){
+  currentFit=bounds;
+  if(typeof map.invalidateSize==="function") map.invalidateSize();
+  map.fitBounds(bounds,{padding:[8,8]});
+}
+
+function initMap(){
+  const M=CONFIG.map;
+  map = L.map("map",{zoomControl:false,attributionControl:true,keyboard:false,
+    dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,tap:false});
+  if(M.tileUrl){
+    const tileOpts={ maxZoom:M.tileMaxZoom||19, attribution:M.tileAttribution };
+    if(M.tileSubdomains) tileOpts.subdomains=M.tileSubdomains;
+    L.tileLayer(M.tileUrl, tileOpts).addTo(map);
+    if(M.darkenTiles) document.body.classList.add("darktiles");
+  }else if(map.attributionControl && map.attributionControl.addAttribution){
+    map.attributionControl.addAttribution(M.tileAttribution);
+  }
+  applyFit(computeFit([]));
+  layerLegs=L.layerGroup().addTo(map);
+  layerSegs=L.layerGroup().addTo(map);
+  layerCam =L.layerGroup().addTo(map);
+
+  // Ledernas polylinjer är grova handritade skisser — de finns för att matcha
+  // mätsträckor, inte för att vara karta. Håll dem svaga och streckade så att
+  // Trafikverkets verkliga geometri (drawSegments) är det man ser.
+  for(const k in CONFIG.legs)
+    L.polyline(CONFIG.legs[k].polyline,
+      {color:"#2a3a4e",weight:1.4,opacity:.28,dashArray:"3 6"}).addTo(layerLegs);
+
+  if(!M.tileUrl && typeof L.divIcon==="function" && typeof L.marker==="function"){
+    for(const [lat,lon,label,dx,dy] of (M.places||[]))
+      L.marker([lat,lon],{ interactive:false, keyboard:false,
+        icon:L.divIcon({ className:"placelbl",
+          html:`<span style="transform:translate(${dx??8}px,${dy??-4}px)">${esc(label)}</span>`,
+          iconSize:null, iconAnchor:[0,0] }) }).addTo(layerLegs);
+  }
+
+  L.circleMarker([CONFIG.home.lat,CONFIG.home.lon],
+    {radius:5,color:"#ffffff",weight:2,fillColor:"#4da3ff",fillOpacity:1}).addTo(layerLegs);
+
+  // DAKboard bäddar in sidan i en iframe som ofta får slutlig storlek först
+  // efter load — utan detta ritas kartan i fel format.
+  const refit=()=> applyFit(currentFit||computeFit([]));
+  setTimeout(refit,400); setTimeout(refit,2000);
+  window.addEventListener("resize",refit);
+}
+
+function drawSegments(routes){
+  layerSegs.clearLayers();
+  for(const r of routes){
+    const lvl = Math.max(levelFromRatio(routeRatio(r)) ?? 0, statusFloor(r.status));
+    const col = routeRatio(r)==null ? C.none : LEVEL_COLOR[lvl];
+    const w = lvl>=2 ? 6 : lvl===1 ? 4.5 : 3;
+    for(const p of r.paths){
+      if(p.length<2) continue;
+      L.polyline(p,{color:col,weight:w,opacity:routeRatio(r)==null?.35:.95,lineCap:"round"}).addTo(layerSegs);
+    }
+  }
+}
+/** Kameror står ofta tätt — ligger två på samma punkt blir siffrorna oläsliga.
+ *  Knuffa undan de som krockar med en redan utsatt markör. */
+function spreadPoints(points, minMeters){
+  const out=[];
+  for(const p of points){
+    let q=[p[0],p[1]];
+    for(let n=0; n<8; n++){
+      const clash=out.find(o=>metersBetween(o,q)<minMeters);
+      if(!clash) break;
+      const ang=(n+1)*(Math.PI*2/5);
+      const d=minMeters*0.85*(1+Math.floor(n/5));
+      q=[ p[0] + (d*Math.sin(ang))/111320,
+          p[1] + (d*Math.cos(ang))/(111320*Math.cos(p[0]*Math.PI/180)) ];
+    }
+    out.push(q);
+  }
+  return out;
+}
+
+function drawCameras(list){
+  layerCam.clearLayers();
+  const pts=spreadPoints(list.map(c=>c.pt).filter(Boolean), 550);
+  pts.forEach((pt,i)=>{
+    const m=L.circleMarker(pt,{radius:8,color:"#0a0e13",weight:2,
+      fillColor:"#cfe4ff",fillOpacity:1}).addTo(layerCam);
+    if(typeof m.bindTooltip==="function")
+      m.bindTooltip(String(i+1),{permanent:true,direction:"center",className:"camnum"});
+    // tunn linje tillbaka till kamerans riktiga plats när den flyttats
+    const real=list[i] && list[i].pt;
+    if(real && metersBetween(real,pt)>80)
+      L.polyline([real,pt],{color:"#cfe4ff",weight:1,opacity:.45}).addTo(layerCam);
+  });
+}
+
+/* ==================================================================== *
+ *  6. RENDERING                                                         *
+ * ==================================================================== */
+const el = id => document.getElementById(id);
+let legState={};
+
+/* Avstängning: Trafikverkets avvikelsefeed (objekttypen Situation) finns
+   INTE i detta API — bara mätdata. Därför bedöms avstängning ur mätningen:
+   står trafiken still, eller har mätsträckorna på 75 V slutat rapportera
+   fast de fanns tidigare, så beter sig leden som avstängd. Tavlan säger
+   rakt ut att det är en bedömning och inte ett officiellt besked. */
+let lslHadData=false, lslMissingRuns=0;
+
+function closureVerdict(){
+  const st=legState.LSL;
+  if(!st) return { code:"unknown" };
+  if(st.coveredKm>0){
+    lslHadData=true; lslMissingRuns=0;
+    if((st.level??0)>=3 || (st.speed!=null && st.speed<20)) return { code:"stopped", st };
+    return { code:"open", st };
+  }
+  lslMissingRuns++;
+  // Två tomma hämtningar i rad efter att data funnits = misstänkt avstängning.
+  if(lslHadData && lslMissingRuns>=2) return { code:"nodata", st };
+  return { code:"unknown", st };
+}
+
+function renderBanner(){
+  const b=el("banner"), t=el("btitle"), m=el("bmsg");
+  const watched=CONFIG.watch.legs.map(k=>({k,st:legState[k]})).filter(x=>x.st);
+  const measured=watched.filter(x=>x.st.coveredKm>0);
+  const delay=watched.reduce((s,x)=>s+(x.st.delay||0),0);
+  const v=closureVerdict();
+
+  let cls, title, note;
+  if(v.code==="stopped"){
+    cls="crit";
+    title="SÖDRA LÄNKEN: STÅR STILL – kan vara avstängt";
+    note="bedömt ur mätdata: "+Math.round(v.st.speed||0)+" km/h västerut";
+  }else if(v.code==="nodata"){
+    cls="crit";
+    title="SÖDRA LÄNKEN: ingen mätdata – kan vara avstängt";
+    note="mätsträckorna på 75 västerut har slutat rapportera";
+  }else if(v.code==="unknown"){
+    cls="warn";
+    title="Södra länken: vet inte";
+    note="ingen mätdata på 75 västerut ännu";
+  }else{
+    const lvl=v.st.level??0;
+    cls=["ok","warn","bad","bad"][lvl];
+    title="SÖDRA LÄNKEN: ÖPPEN · "+LEVEL_WORD[lvl]+" in mot stan";
+    if(delay>=1) title+=" · +"+Math.round(delay)+" min";
+    note = measured.map(x=>CONFIG.legs[x.k].short+" "+LEVEL_WORD[x.st.level??0]+
+      (x.st.speed? " "+Math.round(x.st.speed)+" km/h":"")).join(" · ");
+  }
+  b.className="banner "+cls;
+  t.textContent=title;
+  // Kort i den smalare banderollen — hela förklaringen står i LÄS-MIG.
+  m.textContent=note+" · avstängning bedöms ur mätdata";
+}
+
+function renderDestinations(){
+  const host=el("dests"); host.innerHTML="";
+  for(const dest of CONFIG.destinations){
+    const box=document.createElement("div"); box.className="dest";
+    // Höjden fördelas efter antal rutter, annars blir det tomma luckor i
+    // blocken med få alternativ.
+    box.style.flexGrow = String(dest.routes.length);
+    const rows=dest.routes.map(r=>{
+      const legs=r.legs.map(k=>({key:k,cfg:CONFIG.legs[k],st:legState[k]||{}}));
+      const free=legs.reduce((s,l)=>s+(l.cfg.freeFlow||0),0)+(r.extra||0);
+      const delay=legs.reduce((s,l)=>s+(l.st.delay||0),0);
+      const totKm=legs.reduce((s,l)=>s+l.cfg._km,0);
+      const measKm=legs.reduce((s,l)=>s+(l.st.coveredKm?l.cfg._km:0),0);
+      const noFerry=legs.some(l=>l.st.ferry && l.st.noService);
+      return { ...r, legs, free, delay, eta:free+delay, noFerry,
+               coverage: totKm? measKm/totKm : 0 };
+    });
+    const open=rows.filter(r=>!r.noFerry);
+    const best=(open.length?open:rows).reduce((a,b)=> b.eta<a.eta?b:a);
+
+    box.innerHTML=`<h2>${esc(dest.name)}<span class="km">från Tollare</span></h2>`;
+    for(const r of rows){
+      const div=document.createElement("div"); div.className="route";
+      const chips=[];
+      if(r.noFerry) chips.push(`<span class="chip blocked">INGEN FÄRJA</span>`);
+      else if(best===r && rows.length>1) chips.push(`<span class="chip best">BÄST</span>`);
+      // Saknas mätdata på en rejäl del av sträckan är siffran till stor del
+      // beräknad — då ska den inte se lika säker ut som de andra.
+      if(r.coverage<0.6) chips.push(`<span class="chip est" title="delvis beräknad – saknar mätdata på en del av sträckan">CA</span>`);
+      div.innerHTML=
+        `<div class="rname"><span class="txt">${esc(r.name)}</span>${chips.join("")}</div>`+
+        `<div class="delta" style="color:${levelColor(levelFromRatio(1+r.delay/Math.max(r.free,1)))}">${fmtDelta(r.delay)}</div>`+
+        `<div class="eta">${Math.round(r.eta)}<u>min</u></div>`+
+        `<div class="legbar">`+
+          r.legs.map(l=>{
+            const st=l.st, has=st.coveredKm>0;
+            const col = has ? levelColor(st.level) : C.none;
+            const tip = l.cfg.name + (has
+              ? " · "+(st.delay>=1 ? "+"+Math.round(st.delay)+" min" : LEVEL_WORD[st.level??0])
+              : " · mäts inte");
+            return `<b class="${has?"":"nodata"}" style="flex:${l.cfg._km};background:${col}" `+
+                   `title="${esc(tip)}">${esc(l.cfg.short||"")}</b>`;
+          }).join("")+
+        `</div>`;
+      box.appendChild(div);
+    }
+    host.appendChild(box);
+  }
+}
+
+function renderLegs(){
+  const host=el("legs"); host.innerHTML="";
+  const keys=Object.keys(CONFIG.legs)
+    .filter(k=>legState[k])
+    .sort((a,b)=> (legState[b].level??-1)-(legState[a].level??-1)
+               || (legState[b].delay||0)-(legState[a].delay||0));
+  for(const k of keys.slice(0,8)){
+    const s=legState[k], cfg=CONFIG.legs[k];
+    const has=s.coveredKm>0;
+    const col=has?levelColor(s.level):C.none;
+    const row=document.createElement("div"); row.className="legrow";
+    const hhmm=t=>{const d=new Date(t);return two(d.getHours())+":"+two(d.getMinutes());};
+    const mid = s.ferry
+      ? (s.noService ? "inga fler avgångar"
+                     : "avg "+s.departures.map(hhmm).join(", "))
+      : (has ? Math.round(s.speed||0)+" km/h · "+
+               Math.round(Math.min(s.coveredKm,cfg._km))+"/"+Math.round(cfg._km)+" km mätt"
+             : "mäts inte");
+    const right = s.ferry
+      ? (s.noService ? "–" : (s.delay>=1 ? Math.round(s.delay)+" min väntan" : "avgår nu"))
+      : (has ? (s.delay>=1 ? "+"+Math.round(s.delay)+" min" : LEVEL_WORD[s.level]) : "–");
+    row.innerHTML=
+      `<span class="pill" style="background:${col}"></span>`+
+      `<span class="nm">${esc(cfg.name)}</span>`+
+      `<span class="now">${esc(mid)}</span>`+
+      `<span class="dl" style="color:${col}">${esc(right)}</span>`;
+    host.appendChild(row);
+  }
+  if(!keys.length) host.innerHTML=`<div class="empty">ingen mätdata</div>`;
+
+  // Säg tydligt hur många sträckor som inte mäts alls — de streckade
+  // fälten i ruttstaplarna är dessa.
+  const utan=keys.filter(k=>!(legState[k].coveredKm>0)).length;
+  const h3=document.querySelector("#legpanel h3");
+  if(h3) h3.textContent = "Belastning per sträcka"+(utan? " · "+utan+" mäts inte" : "");
+}
+
+function renderCameras(list){
+  const host=el("cams"); host.innerHTML="";
+  if(!list.length){ host.innerHTML=`<div class="empty">inga kameror nära dina leder</div>`; return; }
+  list.forEach((c,i)=>{
+    const st=legState[c.leg]||{};
+    const has=st.coveredKm>0;
+    const col=has?levelColor(st.level):C.none;
+    const tag=(CONFIG.legs[c.leg].short||"")+" · "+(has
+      ? (st.delay>=1? "+"+Math.round(st.delay)+" min" : LEVEL_WORD[st.level??0])
+      : "mäts inte");
+    const age=minutesAgo(c.photoTime);
+
+    const fig=document.createElement("figure"); fig.className="cam";
+    const img=document.createElement("img");
+    img.alt=c.name||"trafikkamera";
+    // INTE loading="lazy": i DAKboards iframe kan bilden räknas som utanför
+    // skärmen och då laddas den aldrig.
+    img.setAttribute("decoding","async");
+    img.setAttribute("referrerpolicy","no-referrer");
+    let retried=false;
+    img.addEventListener("error",()=>{
+      if(retried){ fig.classList.add("dead"); return; }
+      retried=true;
+      setTimeout(()=>{ img.src=cameraImageUrl(c,CONFIG.cameras.fullsize); },4000);
+    });
+    img.addEventListener("load",()=>fig.classList.remove("dead"));
+    img.src=cameraImageUrl(c,CONFIG.cameras.fullsize);
+
+    const tagEl=document.createElement("span");
+    tagEl.className="camtag"; tagEl.style.background=col; tagEl.textContent=tag;
+    const no=document.createElement("span");
+    no.className="camno"; no.textContent=String(i+1);
+    const cap=document.createElement("figcaption");
+    cap.innerHTML=`<b>${esc(c.name||"kamera")}</b><em>${esc(shortLoc(c.loc))}`+
+      `${age!=null? " · "+age+" min":""}</em>`;
+
+    fig.append(img,no,tagEl,cap);
+    host.appendChild(fig);
+  });
+}
+
+/* ==================================================================== *
+ *  7. DEMOLÄGE (?mock=1)                                                *
+ * ==================================================================== */
+function mockData(){
+  const rnd=(s=>()=>(s=(s*1103515245+12345)&0x7fffffff)/0x7fffffff)(20260910);
+  const load={ LSL:2.4, L222E:1.3, L222W:1.5, LESS:1.7, LCITY:1.9,
+               LE4LJ:1.1, LE4N:1.4, LE4S:1.1, L226:1.02 };
+  const prefix={ LSL:"75 V ", L222E:"222 V ", L222W:"222 V ", LESS:"E4/E20 N ",
+                 LE4LJ:"E4/E20 N ", LE4N:"E4 N ", LE4S:"E4/E20 S ",
+                 L226:"226 S ", LCITY:"Nord-Sydaxeln N " };
+  const routes=[], cams=[];
+  for(const k in CONFIG.legs){
+    const p=CONFIG.legs[k].polyline;
+    for(let i=1;i<p.length;i++){
+      if(prefix[k]){
+        const dist=Math.max(400,metersBetween(p[i-1],p[i]));
+        const ref=dist/(80/3.6), f=(load[k]||1.1)*(0.85+0.3*rnd());
+        routes.push({ Id:k+"-"+i, Name:prefix[k]+"delsträcka "+i, Length:Math.round(dist),
+          FreeFlowTravelTime:+ref.toFixed(1), TravelTime:+(ref*f).toFixed(1),
+          Speed:+(dist/(ref*f)*3.6).toFixed(1),
+          TrafficStatus: f>2 ? "heavy" : "freeflow",
+          MeasureTime:new Date().toISOString(),
+          Geometry:{WGS84:`LINESTRING (${p[i-1][1]} ${p[i-1][0]}, ${p[i][1]} ${p[i][0]})`} });
+      }
+      if(i%2===1){
+        const mid=[(p[i-1][0]+p[i][0])/2,(p[i-1][1]+p[i][1])/2];
+        cams.push({ Id:"SE_STA_CAMERA_Mock_"+k+i, Name:CONFIG.legs[k].short+" "+i,
+          Location:"Kameran är placerad på "+CONFIG.legs[k].name.split("·")[0].trim()+
+                   " och är riktad mot Stockholm.",
+          Type:"Trafikflödeskamera", Status:"videoOrImagesAvailable", HasFullSizePhoto:true,
+          PhotoTime:new Date(Date.now()-(2+i)*60000).toISOString(),
+          PhotoUrl:"https://api.trafikinfo.trafikverket.se/v2/Images/data/road.infrastructure.camera/Mock_"+k+i+".jpg",
+          Geometry:{WGS84:`POINT (${mid[1]} ${mid[0]})`} });
+      }
+    }
+  }
+  cams.push({ Id:"utan_url", Name:"Utan bild", Status:"videoOrImagesAvailable",
+              Geometry:{WGS84:"POINT (18.07 59.32)"} });
+
+  // färjeavgångar var 20:e minut på båda lederna
+  const ferries=[];
+  for(const [routeId,from,to,name] of [[17,"Värmdö","Rindö","Oxdjupsleden"],
+                                       [21,"Rindö","Vaxholm","Vaxholmsleden"]]){
+    for(let i=0;i<4;i++)
+      ferries.push({ DepartureTime:new Date(Date.now()+(6+i*20)*60000).toISOString(),
+        FromHarbor:{Name:from}, ToHarbor:{Name:to}, Route:{Id:routeId,Name:name} });
+  }
+  return { routes, cams, ferries };
+}
+
+/* ==================================================================== *
+ *  8. HUVUDLOOP                                                         *
+ * ==================================================================== */
+let lastGood=null, lastError=null, knownCameras=[];
+
+function computeLegLengths(){
+  for(const k in CONFIG.legs){
+    const c=CONFIG.legs[k];
+    c._km = c.km || pathLengthMeters(c.polyline)/1000;
+  }
+}
+
+async function refresh(){
+  let routes=[], ferries=[], errs=[];
+  if(MOCK){
+    const m=mockData();
+    routes=m.routes.map(readRoute);
+    ferries=m.ferries;
+    knownCameras=m.cams.map(readCamera).filter(c=>c.ok);
+  }else{
+    try{ routes=(await fetchRoutes()).map(readRoute); }
+    catch(e){ errs.push("restider: "+e.message); }
+    try{
+      const cams=(await fetchCameras()).map(readCamera).filter(c=>c.ok);
+      if(cams.length) knownCameras=cams;          // behåll förra listan vid fel
+    }catch(e){ errs.push("kameror: "+e.message); }
+    if(ferryRouteIds().length){
+      try{ ferries=await fetchFerries(); }
+      catch(e){ errs.push("färjor: "+e.message); }
+    }
+  }
+
+  if(errs.length && !routes.length){ lastError=errs.join(" · "); updateStamp(); return; }
+  lastError = errs.length ? errs.join(" · ") : null;
+
+  legState={};
+  for(const k in CONFIG.legs){
+    const cfg=CONFIG.legs[k];
+    if(cfg.ferry){
+      // Färja: "kötiden" är väntan på nästa avgång.
+      const w=ferryWait(ferries,cfg.ferry);
+      legState[k]={ name:cfg.name, matched:0, ferry:true, departures:w.next,
+        delay: w.waitMin ?? 0,
+        coveredKm: w.waitMin==null ? 0 : cfg._km,
+        level: w.waitMin==null ? null : (w.waitMin<10 ? 0 : w.waitMin<25 ? 1 : 2),
+        ratio:null, speed:null, noService: w.waitMin==null };
+      continue;
+    }
+    const matched=matchLeg(routes,cfg,CONFIG.matchToleranceMeters);
+    legState[k]={ name:cfg.name, matched:matched.length, ...legDelayMinutes(matched,cfg._km) };
+  }
+
+  const cams=scoreCameras(knownCameras,CONFIG.legs,legState,CONFIG.cameras);
+
+  // Zooma på pendlingskärnan, vidgat bara så att de visade kamerorna ryms.
+  // Att vidga för varje kö någonstans i länet drog ut utsnittet så mycket
+  // att kärnan blev en klump i mitten.
+  applyFit(computeFit(cams.map(c=>c.pt).filter(Boolean)));
+
+  drawSegments(routes); drawCameras(cams);
+  renderBanner(); renderDestinations(); renderLegs();
+  renderCameras(cams);
+
+  lastGood=new Date();
+  updateStamp();
+  if(DEBUG) showDebug(routes,cams);
+}
+
+function updateStamp(){
+  const st=el("stamp");
+  if(!lastGood && lastError){ st.innerHTML=`<span class="err">fel: ${esc(lastError)}</span>`; return; }
+  if(!lastGood){ st.textContent="hämtar…"; return; }
+  const ageMin=(Date.now()-lastGood.getTime())/60000;
+  const stale=ageMin>CONFIG.staleMinutes;
+  // Bara uppdateringstiden. Fel och demoläge visas ändå — utan det vet man
+  // inte att siffrorna står still.
+  st.innerHTML =
+    `<b class="${stale?"stale":""}">uppdaterad ${two(lastGood.getHours())}:${two(lastGood.getMinutes())}`+
+    `${stale?" ("+Math.round(ageMin)+" min sedan)":""}</b>`+
+    (lastError ? `<br><span class="err">${esc(lastError)}</span>` : "")+
+    (MOCK ? `<br><span class="stale">DEMOLÄGE · påhittad data</span>` : "");
+}
+
+function showSetup(){
+  const d=document.createElement("div"); d.id="setup";
+  d.innerHTML=`<h1>Trafikverket-nyckel saknas</h1>
+    <ol><li>Hämta en gratisnyckel på <a href="https://data.trafikverket.se/">data.trafikverket.se</a>.</li>
+    <li>Byt ut <code>apiKey</code> högst upp i <code>index.html</code>.</li>
+    <li>Eller lägg den i adressen en gång: <code>…/index.html?key=DINNYCKEL</code></li></ol>
+    <p>Vill du bara se layouten: <code>…/index.html?mock=1</code></p>`;
+  document.body.appendChild(d);
+}
+
+function showDebug(routes,cams){
+  let box=el("dbg");
+  if(!box){ box=document.createElement("div"); box.id="dbg"; document.body.appendChild(box); }
+  const r0=routes[0];
+  box.textContent =
+    `TravelTimeRoute: ${routes.length} sträckor i Stockholms län\n`+
+    `fält i svaret: ${r0? Object.keys(r0.raw).join(", "):"–"}\n`+
+    `exempel: ${r0? r0.name+"  "+r0.cur+"s / "+r0.ref+"s fri  "+r0.distance+"m  "+r0.speed+"km/h  "+r0.status : "–"}\n\n`+
+    `Kameror: ${knownCameras.length} användbara, ${cams.length} visas\n`+
+    `${cams[0]? "bildurl: "+cameraImageUrl(cams[0],CONFIG.cameras.fullsize) : ""}\n\n`+
+    `leder (namnmatchning + geometri):\n`+
+    Object.keys(CONFIG.legs).map(k=>{
+      const s=legState[k], c=CONFIG.legs[k];
+      return `  ${k.padEnd(6)} ${String(s.matched).padStart(2)} rutter  `+
+             `${s.coveredKm.toFixed(1)}/${c._km} km  +${s.delay.toFixed(1)} min  `+
+             `${s.ratio? "×"+s.ratio.toFixed(2):"–"}`;
+    }).join("\n");
+}
+
+/* ---- start ---- */
+computeLegLengths();
+initMap();
+renderDestinations(); renderLegs();
+
+if(!MOCK && (!apiKey || /^SATT_DIN/.test(apiKey))){
+  showSetup();
+}else{
+  refresh();
+  setInterval(refresh, CONFIG.refreshSeconds*1000);
+  setInterval(updateStamp, 30000);
+  setTimeout(()=>location.reload(), CONFIG.reloadHours*3600*1000);
+}
 </script>
 </body>
 </html>
