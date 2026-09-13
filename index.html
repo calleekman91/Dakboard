@@ -188,8 +188,14 @@
 
 const CONFIG = {
 
-  /* Trafikverket-nyckel. Kan också skickas som ?key=... i adressen. */
-  apiKey: "9bb75930479f46e29df498d18b5467cf",
+  /* Trafikverket-nyckel.
+     LÄGG INTE NYCKELN HÄR om filen ligger i ett publikt repo — den blir
+     läsbar för alla och bottar skannar GitHub efter nycklar.
+     Skicka den i adressen istället, en gång räcker:
+         https://…/index.html?key=DIN_NYCKEL
+     Den sparas då i webbläsarens localStorage. Har du DAKboard-blockets
+     URL med ?key=... i sig fungerar den vid varje omladdning. */
+  apiKey: "",
 
   refreshSeconds: 90,
   reloadHours: 6,
@@ -559,11 +565,11 @@ const shortLoc = s => String(s||"")
 const params = new URLSearchParams(location.search);
 const DEBUG = params.has("debug");
 const MOCK  = params.has("mock");
-let apiKey = params.get("key") || CONFIG.apiKey;
+let apiKey = params.get("key") || CONFIG.apiKey || "";
 try{
   if(params.get("key")) localStorage.setItem("tvKey", params.get("key"));
-  if(!apiKey || /^SATT_DIN/.test(apiKey)) apiKey = localStorage.getItem("tvKey") || apiKey;
-}catch(e){}
+  if(!apiKey) apiKey = localStorage.getItem("tvKey") || "";
+}catch(e){ /* localStorage kan vara blockerat */ }
 
 async function tvQuery(objecttype, version, inner){
   const body = `<REQUEST><LOGIN authenticationkey="${apiKey}"/>`+
@@ -1117,10 +1123,14 @@ function updateStamp(){
 function showSetup(){
   const d=document.createElement("div"); d.id="setup";
   d.innerHTML=`<h1>Trafikverket-nyckel saknas</h1>
-    <ol><li>Hämta en gratisnyckel på <a href="https://data.trafikverket.se/">data.trafikverket.se</a>.</li>
-    <li>Byt ut <code>apiKey</code> högst upp i <code>index.html</code>.</li>
-    <li>Eller lägg den i adressen en gång: <code>…/index.html?key=DINNYCKEL</code></li></ol>
-    <p>Vill du bara se layouten: <code>…/index.html?mock=1</code></p>`;
+    <ol>
+      <li>Hämta en gratisnyckel på <a href="https://data.trafikverket.se/">data.trafikverket.se</a>.</li>
+      <li>Lägg den i adressen: <code>${esc(location.pathname)}?key=DIN_NYCKEL</code><br>
+          Den sparas i webbläsaren, så det räcker en gång per skärm.</li>
+    </ol>
+    <p style="color:#8497ad">Ligger filen i ett publikt repo: skriv inte nyckeln i
+       <code>index.html</code>. Håll den i DAKboard-blockets URL istället.</p>
+    <p>Vill du bara se layouten: <code>${esc(location.pathname)}?mock=1</code></p>`;
   document.body.appendChild(d);
 }
 
@@ -1148,7 +1158,7 @@ computeLegLengths();
 initMap();
 renderDestinations(); renderLegs();
 
-if(!MOCK && (!apiKey || /^SATT_DIN/.test(apiKey))){
+if(!MOCK && !apiKey){
   showSetup();
 }else{
   refresh();
