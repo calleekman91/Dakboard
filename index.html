@@ -5,36 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tollare → Stockholm · Reseplanerare</title>
 <style>
-  /* ==== Leaflets kärnregler, inlagda med flit ====================
-     Hämtades tidigare från cdnjs. Blockeras den hämtningen — brandvägg,
-     proxy, eller en skärm utan full nätåtkomst — så fungerar Leaflets
-     JavaScript ändå, men lagren får ingen positionering och kartan blir
-     helt osynlig medan resten av tavlan ser normal ut. Därför ligger
-     reglerna här. Bara det som behövs för en karta utan kartbild.     */
-  .leaflet-pane,.leaflet-tile,.leaflet-marker-icon,.leaflet-marker-shadow,
-  .leaflet-tile-container,.leaflet-pane>svg,.leaflet-pane>canvas,
-  .leaflet-zoom-box,.leaflet-image-layer,.leaflet-layer
-    {position:absolute;left:0;top:0}
-  .leaflet-container{overflow:hidden;position:relative;touch-action:none}
-  .leaflet-container img{max-width:none!important;padding:0}
-  .leaflet-pane{z-index:400}
-  .leaflet-tile-pane{z-index:200}
-  .leaflet-overlay-pane{z-index:400}
-  .leaflet-marker-pane{z-index:600}
-  .leaflet-tooltip-pane{z-index:650}
-  .leaflet-popup-pane{z-index:700}
-  .leaflet-control-container{position:absolute;inset:0;pointer-events:none;z-index:800}
-  .leaflet-top{position:absolute;top:0} .leaflet-bottom{position:absolute;bottom:0}
-  .leaflet-left{left:0} .leaflet-right{right:0}
-  .leaflet-control{position:relative;float:right;clear:both;pointer-events:auto}
-  .leaflet-control-attribution{padding:0 5px;margin:0}
-  .leaflet-marker-icon{width:auto!important;height:auto!important}
-  .leaflet-tooltip{position:absolute;padding:2px;white-space:nowrap;pointer-events:none}
-  .leaflet-zoom-animated{transform-origin:0 0}
-  .leaflet-interactive{cursor:pointer}
-  /* ================================================================ */
-</style>
-<style>
   :root{
     --bg:#0a0e13; --panel:#111823; --panel2:#0e141d; --line:#1e293b;
     --text:#e9eff7; --muted:#8497ad; --dim:#5b6b80;
@@ -47,7 +17,10 @@
     background:var(--bg); color:var(--text);
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,Helvetica,Arial,sans-serif;
     font-variant-numeric:tabular-nums; overflow:hidden;
-    font-size:clamp(12px,1.05vh,17px);
+    /* Skalar med BÅDA måtten. Tidigare följde textstorleken bara höjden,
+       så i ett smalare fönster blev texten för stor för kolumnerna och
+       höggs av. min() låter det smalaste måttet bestämma. */
+    font-size:clamp(8px, min(1.12vh, 0.66vw), 16px);
   }
   #app{height:100%;display:flex;flex-direction:column;gap:.7vh;padding:1.1vh 1.2vw}
 
@@ -97,17 +70,19 @@
   .route{display:grid;grid-template-columns:1fr auto auto;grid-template-rows:auto auto;
     column-gap:1vw;row-gap:.3vh;align-items:center;padding:.55vh .2vw;border-top:1px solid var(--line)}
   .route:first-of-type{border-top:0}
-  .rname{font-size:1.25em;font-weight:600;display:flex;align-items:center;gap:.5em;min-width:0}
-  .rname span.txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rname{font-size:1.22em;font-weight:600;display:flex;align-items:baseline;gap:.5em;min-width:0}
+  /* Ruttnamnet bryts på två rader istället för att huggas av — hela namnet
+     ska gå att läsa även i ett smalt fönster. */
+  .rname span.txt{min-width:0;overflow:hidden;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
   .chip{font-size:.66em;font-weight:700;letter-spacing:.06em;padding:.2em .5em;border-radius:6px;flex:0 0 auto}
   .chip.best{background:rgba(51,209,127,.16);color:var(--ok);border:1px solid rgba(51,209,127,.4)}
   .chip.est{background:rgba(132,151,173,.14);color:var(--muted);border:1px solid rgba(132,151,173,.3)}
   .chip.blocked{background:rgba(255,77,94,.18);color:var(--crit);border:1px solid rgba(255,77,94,.5)}
-  body.darktiles .leaflet-tile-pane{
-    filter:invert(1) hue-rotate(180deg) brightness(.94) contrast(1.06) saturate(.55)}
-  .eta{font-size:2.05em;font-weight:700;letter-spacing:-.02em;text-align:right;line-height:1}
+  .eta{font-size:1.95em;font-weight:700;letter-spacing:-.02em;text-align:right;line-height:1;
+    white-space:nowrap}
   .eta u{text-decoration:none;font-size:.42em;font-weight:500;color:var(--muted);margin-left:.25em}
-  .delta{font-size:1.15em;font-weight:650;text-align:right;min-width:4.2em}
+  .delta{font-size:1.12em;font-weight:650;text-align:right;min-width:3.4em;white-space:nowrap}
   /* Varje delsträcka namnges i stapeln, annars går det inte att se vilken
      del av vägen som är röd. */
   .legbar{grid-column:1/-1;display:flex;gap:2px;height:1.85vh;border-radius:5px;overflow:hidden}
@@ -123,9 +98,10 @@
 
   /* ---------- bussavgångar ---------- */
   .destwrap{display:flex;flex-direction:column;gap:.7vh;flex:0 0 auto}
-  /* Busskortet tar den höjd som blir kvar och klipper sig självt vid behov —
-     bilkorten ska aldrig behöva krympa. */
-  .dest.bus{flex:1 1 auto;min-height:0;overflow:hidden}
+  /* Busskortet tar den höjd som blir kvar. min-height gör att det aldrig
+     kan pressas till noll och försvinna — antalet rader anpassas istället
+     av fitRows() efter hur mycket plats som faktiskt finns. */
+  .dest.bus{flex:1 1 auto;min-height:5.5em;overflow:hidden}
   #buses{min-height:0;overflow:hidden}
   .bustop{font-size:1em;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;
     margin-top:.35vh;border-top:1px solid var(--line);padding-top:.35vh}
@@ -172,16 +148,14 @@
   .busmore{color:var(--dim);font-size:.95em;padding-top:.1vh}
 
   #map{flex:1 1 auto;min-height:20vh;border-radius:var(--r);border:1px solid var(--line);background:#0e141d}
-  .leaflet-container{background:#0e141d;font-family:inherit}
-  .leaflet-control-attribution{background:rgba(10,14,19,.7)!important;color:#6b7c91!important;font-size:9px!important}
-  .leaflet-control-attribution a{color:#7d90a6!important}
-  .leaflet-tooltip.camnum{background:none;border:0;box-shadow:none;padding:0;margin:0;
-    color:#08111c;font:700 10px/1 inherit}
-  .leaflet-tooltip.camnum::before{display:none}
   /* Ortnamn när kartbild saknas */
-  .placelbl{pointer-events:none;width:auto!important;height:auto!important}
-  .placelbl span{display:inline-block;color:#7b8ea6;font:500 11px/1 inherit;
-    white-space:nowrap;text-shadow:0 0 5px #0a0e13,0 0 5px #0a0e13,0 0 3px #0a0e13}
+  /* SVG-kartan */
+  .mapsvg{display:block;width:100%;height:100%}
+  .mapsvg text{pointer-events:none}
+  text.placelbl{fill:#7b8ea6;font:500 11px/1 inherit;
+    paint-order:stroke;stroke:#0a0e13;stroke-width:3px;stroke-linejoin:round}
+  text.camnum{fill:#08111c;font:700 10px/1 inherit}
+  text.mapattr{fill:#5b6b80;font:400 9px/1 inherit}
 
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:.85vh 1vw;
     display:flex;flex-direction:column;gap:.45vh;min-height:0;flex:0 1 auto;overflow:hidden}
@@ -215,8 +189,9 @@
     background:linear-gradient(transparent,rgba(5,9,14,.93) 60%);line-height:1.25}
   .cam figcaption b{display:block;font-size:1.08em;font-weight:650;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .cam figcaption em{font-style:normal;color:var(--muted);font-size:.9em;display:block;
-    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* Platstexten får två rader — hela beskrivningen ska gå att läsa. */
+  .cam figcaption em{font-style:normal;color:var(--muted);font-size:.9em;overflow:hidden;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 
   @media (max-aspect-ratio: 6/5){
     main{grid-template-columns:1fr;grid-template-rows:auto auto}
@@ -275,7 +250,6 @@
   <section class="cams" id="cams"><div class="empty">hämtar kameror…</div></section>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 /* ==================================================================== *
  *  1. KONFIGURATION                                                     *
@@ -300,30 +274,19 @@ const CONFIG = {
   home: { name: "Tollare, Nacka", lat: 59.3204, lon: 18.2090 },
 
   /* --- Karta ---------------------------------------------------------
-     focus  = normalt utsnitt: pendlingskärnan Tollare–city–Solna.
-     county = hela länet, används bara för att filtrera data.
-     dynamicFit = zooma automatiskt ut så att köer (nivå 2+) och de
-     visade kamerorna alltid syns, även när de ligger på E4 syd/norr.
-     tileUrl: null = ingen kartbild från internet, bara vägnätet ur datan
-     plus ortnamn. Det är standard eftersom det ALLTID fungerar:
-       · OpenStreetMaps egna servrar blockerar appar som hämtar direkt
-         (tile usage policy) — då visas rutor med "Access blocked".
-       · CARTO:s och Stadias mörka lager kräver numera nyckel.
-     Vill du ha gatunät under: skaffa gratisnyckel hos CARTO, MapTiler
-     eller Stadia, lägg in URL:en här och sätt darkenTiles efter behov.
-     Exempel (med egen nyckel):
-       tileUrl:"https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}.png?api_key=DIN",
-       tileAttribution:"&copy; Stadia Maps &copy; OpenStreetMap",
-       darkenTiles:false
+     Kartan ritas som SVG direkt ur datan: Trafikverkets mätsträckor i sina
+     köfärger, ledernas skisslinjer svagt streckade under, kamerorna
+     numrerade och ortnamn för orientering. Ingen kartbild och inget
+     externt bibliotek — det var det enda som kunde göra kartan osynlig.
+
+     Utsnittet måste ha ungefär samma proportion som kartrutan, annars
+     sträcks längden ut och allt hamnar i en klump i mitten.
+
+     fitLegs styr utsnittet tillsammans med hemmapunkten och de visade
+     kamerorna. De långa svansarna (E4 mot Södertälje, Huddingevägen och
+     Vaxholmsgrenen) ritas men styr inte zoomen.
   ------------------------------------------------------------------- */
   map: {
-    /* Utsnittet måste ha ungefär samma proportion som kartrutan, annars
-       blåser Leaflet upp längden och allt hamnar i en klump i mitten.
-       Rutan är ca 1,8:1 → 0,08° lat (9 km) mot 0,29° lon (16 km). */
-    /* Utsnittet räknas ur dessa leder plus hemmapunkten och de visade
-       kamerorna. De långa svansarna (E4 mot Södertälje, Huddingevägen och
-       Vaxholmsgrenen) ritas men styr inte zoomen — annars blir kärnan en
-       klump i mitten. */
     fitLegs: ["L222E","L222W","LSL","LE4LJ","LESS","LE4N","LCITY","LSOD","LSTG"],
     county: [[59.15,17.62],[59.42,18.24]],
     dynamicFit: true,
@@ -342,11 +305,9 @@ const CONFIG = {
        mot Rindö–Vaxholm är raka streck över skärgården och såg ut som ett
        fel på kartan. */
     skeletonLegsOnly: true,
-    tileUrl: null,
-    tileAttribution: 'trafikdata Trafikverket',
-    tileMaxZoom: 19,
-    tileSubdomains: null,
-    darkenTiles: false,
+
+    /* Text nere till höger i kartan. */
+    tileAttribution: "trafikdata Trafikverket",
     /* Ortnamn för orientering när kartbild saknas.
        [lat, lon, namn, dx, dy] — dx/dy i pixlar puttar texten bort från
        vägarna och kamerasiffrorna. Håll listan kort. */
@@ -517,7 +478,7 @@ const CONFIG = {
        vid Centralplan, som har 16 turer mot stan. true = grupperat per
        hållplats med perStop rader var. */
     groupByStop: false,
-    maxRows: 10,           // rader i den kronologiska listan
+    maxRows: 14,           // så många renderas; höjden avgör hur många som visas
 
     /* Passerar samma buss flera hållplatser visas den bara vid den första i
        listan ovan — Tollare torg går alltså före Hedenströms väg. */
@@ -662,13 +623,18 @@ function routeRatio(r){
   return null;
 }
 
-/** Trafikverkets egen statusflagga får bara HÖJA allvaret, aldrig sänka —
- *  vokabulären utöver "freeflow" är inte känd. */
+/** Trafikverkets egen statusflagga får bara HÖJA allvaret, aldrig sänka.
+ *  Vokabulären är avläst ur skarpa svar: freeflow, heavy, congested,
+ *  impossible. Tidigare föll congested och impossible ner till nivå 1 och
+ *  underskattade läget. Regexen är kvar för värden jag inte sett. */
 function statusFloor(status){
   if(!status || status==="freeflow" || status==="unknown") return 0;
-  if(/stationary|stopped|stillast/.test(status)) return 3;
-  if(/queu|kö/.test(status)) return 2;
-  return 1;                                  // t.ex. "heavy"
+  if(status==="heavy")      return 1;
+  if(status==="congested")  return 2;
+  if(status==="impossible") return 3;
+  if(/stationary|stopped|stillast|impossible|blocked/.test(status)) return 3;
+  if(/queu|kö|congest/.test(status)) return 2;
+  return 1;
 }
 function levelFromRatio(ratio){
   if(ratio==null) return null;
@@ -896,6 +862,8 @@ function readCamera(o){
   const url  = pickField(o,["PhotoUrl"]);
   const pt   = parseWKT(pickField(o,["Geometry.WGS84"])).flat()[0] || null;
   const status = String(pickField(o,["Status"]) || "");
+  const off = v => v===false || v==="false";
+  const on  = v => v===true  || v==="true";
   return {
     id, pt, photoUrl:url,
     name: pickField(o,["Name"]) || "",
@@ -907,8 +875,11 @@ function readCamera(o){
     photoTime: pickField(o,["PhotoTime","ModifiedTime"]),
     // Utan PhotoUrl finns ingen bild att visa — Id går inte att bygga URL av.
     // data: tillåts för demolägets platshållarbilder.
+    // Active/Deleted kontrolleras här också, inte bara i API-filtret: utan
+    // det slank avställda kameror igenom så fort filtret inte användes.
     ok: !!(id && pt && url && /^(https?:\/\/|data:)/i.test(url)) &&
-        (!status || /available/i.test(status))
+        (!status || /available/i.test(status)) &&
+        !off(pickField(o,["Active"])) && !on(pickField(o,["Deleted"]))
   };
 }
 function cameraImageUrl(cam, fullsize){
@@ -951,10 +922,16 @@ function scoreCameras(cams, legs, states, cfg){
 /* ==================================================================== *
  *  5. KARTA                                                             *
  * ==================================================================== */
-let map, layerLegs, layerSegs, layerCam, currentFit=null, mapBroken=false;
+/* Egen SVG-renderare istället för Leaflet.
+   Kartan är helt icke-interaktiv — ingen panorering, ingen zoom, inga
+   kartbilder — så hela biblioteket behövdes bara för att projicera
+   koordinater och rita linjer. Att hämta det från cdnjs var samtidigt det
+   enda som kunde göra kartan osynlig när nätet strular. Nu finns inget
+   externt beroende kvar i filen. */
+let currentFit=null, mapBroken=false;
 
-/** Utsnittet: normalt pendlingskärnan, utvidgat så att köer och de visade
- *  kamerorna alltid ryms. Punkter utanför länet ignoreras. */
+/** Utsnittet: normalt pendlingskärnan, utvidgat så att de visade kamerorna
+ *  alltid ryms. Punkter utanför länet ignoreras. */
 function computeFit(points){
   const M=CONFIG.map;
   const pts=[[CONFIG.home.lat,CONFIG.home.lon]];
@@ -980,78 +957,50 @@ function computeFit(points){
   const pad=M.padWhenExpanding||0.01;
   return [[s-pad,w-pad],[n+pad,e+pad]];
 }
-function applyFit(bounds){
-  currentFit=bounds;
-  if(typeof map.invalidateSize==="function") map.invalidateSize();
-  map.fitBounds(bounds,{padding:[8,8]});
+
+/* ---- projektion ---------------------------------------------------- *
+   Web Mercator, samma som Leaflet använde. x är longitud i grader, y är
+   den mercatorsträckta latituden. Vid 59°N är y-skalan nästan dubbel, så
+   utan den ser Stockholm ihoptryckt ut.                                */
+// ==MAP-PURE-START==
+function mercY(lat){
+  const r=Math.max(-85,Math.min(85,lat))*Math.PI/180;
+  return Math.log(Math.tan(Math.PI/4+r/2))*180/Math.PI;
 }
-
-function initMap(){
-  const M=CONFIG.map;
-  map = L.map("map",{zoomControl:false,attributionControl:true,keyboard:false,
-    dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,tap:false});
-  if(M.tileUrl){
-    const tileOpts={ maxZoom:M.tileMaxZoom||19, attribution:M.tileAttribution };
-    if(M.tileSubdomains) tileOpts.subdomains=M.tileSubdomains;
-    L.tileLayer(M.tileUrl, tileOpts).addTo(map);
-    if(M.darkenTiles) document.body.classList.add("darktiles");
-  }else if(map.attributionControl && map.attributionControl.addAttribution){
-    map.attributionControl.addAttribution(M.tileAttribution);
-  }
-  applyFit(computeFit([]));
-  layerLegs=L.layerGroup().addTo(map);
-  layerSegs=L.layerGroup().addTo(map);
-  layerCam =L.layerGroup().addTo(map);
-
-  // Ledernas polylinjer är grova handritade skisser — de finns för att matcha
-  // mätsträckor, inte för att vara karta. Håll dem svaga och streckade så att
-  // Trafikverkets verkliga geometri (drawSegments) är det man ser.
-  const skeleton = M.skeletonLegsOnly
-    ? (M.fitLegs||[]).filter(k=>CONFIG.legs[k])
-    : Object.keys(CONFIG.legs);
-  for(const k of skeleton)
-    L.polyline(CONFIG.legs[k].polyline,
-      {color:"#2a3a4e",weight:1.4,opacity:.28,dashArray:"3 6"}).addTo(layerLegs);
-
-  if(!M.tileUrl && typeof L.divIcon==="function" && typeof L.marker==="function"){
-    for(const [lat,lon,label,dx,dy] of (M.places||[]))
-      L.marker([lat,lon],{ interactive:false, keyboard:false,
-        icon:L.divIcon({ className:"placelbl",
-          html:`<span style="transform:translate(${dx??8}px,${dy??-4}px)">${esc(label)}</span>`,
-          iconSize:null, iconAnchor:[0,0] }) }).addTo(layerLegs);
-  }
-
-  L.circleMarker([CONFIG.home.lat,CONFIG.home.lon],
-    {radius:5,color:"#ffffff",weight:2,fillColor:"#4da3ff",fillOpacity:1}).addTo(layerLegs);
-
-  // DAKboard bäddar in sidan i en iframe som ofta får slutlig storlek först
-  // efter load — utan detta ritas kartan i fel format.
-  const refit=()=> applyFit(currentFit||computeFit([]));
-  setTimeout(refit,400); setTimeout(refit,2000);
-  window.addEventListener("resize",refit);
+/** Skala och förskjutning som får bounds att fylla w×h px med marginal. */
+function mapTransform(bounds,w,h,padPx){
+  const [[s,west],[n,east]]=bounds;
+  const x0=west, x1=east, y0=mercY(s), y1=mercY(n);
+  const dx=Math.max(1e-9,x1-x0), dy=Math.max(1e-9,y1-y0);
+  const iw=Math.max(1,w-2*padPx), ih=Math.max(1,h-2*padPx);
+  const k=Math.min(iw/dx, ih/dy);                 // samma skala i båda led
+  const cx=(x0+x1)/2, cy=(y0+y1)/2;
+  return {
+    k, w, h,
+    px:(lat,lon)=>[ (lon-cx)*k + w/2, h/2 - (mercY(lat)-cy)*k ]
+  };
 }
+// ==MAP-PURE-END==
 
-function drawSegments(routes){
-  layerSegs.clearLayers();
-  for(const r of routes){
-    const lvl = Math.max(levelFromRatio(routeRatio(r)) ?? 0, statusFloor(r.status));
-    const col = routeRatio(r)==null ? C.none : LEVEL_COLOR[lvl];
-    const w = lvl>=2 ? 6 : lvl===1 ? 4.5 : 3;
-    for(const p of r.paths){
-      if(p.length<2) continue;
-      L.polyline(p,{color:col,weight:w,opacity:routeRatio(r)==null?.35:.95,lineCap:"round"}).addTo(layerSegs);
-    }
-  }
-}
-/** Kameror står ofta tätt — ligger två på samma punkt blir siffrorna oläsliga.
- *  Knuffa undan de som krockar med en redan utsatt markör. */
+const SVGNS="http://www.w3.org/2000/svg";
+const mkSvg=(tag,attrs)=>{
+  const e=document.createElementNS(SVGNS,tag);
+  for(const a in attrs) if(attrs[a]!=null) e.setAttribute(a,String(attrs[a]));
+  return e;
+};
+const pathOf=(coords,T)=>coords.map((p,i)=>{
+  const [x,y]=T.px(p[0],p[1]);
+  return (i?"L":"M")+x.toFixed(1)+" "+y.toFixed(1);
+}).join(" ");
+
+/** Kameror står ofta tätt — ligger två på samma punkt blir siffrorna
+ *  oläsliga. Knuffa undan de som krockar med en redan utsatt markör. */
 function spreadPoints(points, minMeters){
   const out=[];
   for(const p of points){
     let q=[p[0],p[1]];
     for(let n=0; n<8; n++){
-      const clash=out.find(o=>metersBetween(o,q)<minMeters);
-      if(!clash) break;
+      if(!out.some(o=>metersBetween(o,q)<minMeters)) break;
       const ang=(n+1)*(Math.PI*2/5);
       const d=minMeters*0.85*(1+Math.floor(n/5));
       q=[ p[0] + (d*Math.sin(ang))/111320,
@@ -1062,25 +1011,117 @@ function spreadPoints(points, minMeters){
   return out;
 }
 
-function drawCameras(list){
-  layerCam.clearLayers();
-  const pts=spreadPoints(list.map(c=>c.pt).filter(Boolean), 550);
-  pts.forEach((pt,i)=>{
-    const m=L.circleMarker(pt,{radius:8,color:"#0a0e13",weight:2,
-      fillColor:"#cfe4ff",fillOpacity:1}).addTo(layerCam);
-    if(typeof m.bindTooltip==="function")
-      m.bindTooltip(String(i+1),{permanent:true,direction:"center",className:"camnum"});
-    // tunn linje tillbaka till kamerans riktiga plats när den flyttats
-    const real=list[i] && list[i].pt;
+function initMap(){ drawMap([],[]); }
+
+/** Ritar hela kartan. Anropas vid varje uppdatering och vid omritning. */
+function drawMap(routes, cams){
+  const host=el("map");
+  if(!host) return;
+  const M=CONFIG.map;
+  const w=host.clientWidth||960, h=host.clientHeight||420;
+
+  const fitPts=(cams||[]).map(c=>c.pt).filter(Boolean);
+  if(M.fitMode==="measured")
+    for(const r of (routes||[])) for(const p of r.coords) fitPts.push(p);
+  currentFit=computeFit(fitPts);
+  const T=mapTransform(currentFit,w,h,10);
+
+  const svg=mkSvg("svg",{width:w,height:h,viewBox:`0 0 ${w} ${h}`,class:"mapsvg"});
+
+  // 1. ledernas skisslinjer, svagt streckade
+  const skeleton = M.skeletonLegsOnly
+    ? (M.fitLegs||[]).filter(k=>CONFIG.legs[k]) : Object.keys(CONFIG.legs);
+  for(const k of skeleton)
+    svg.appendChild(mkSvg("path",{d:pathOf(CONFIG.legs[k].polyline,T),
+      fill:"none",stroke:"#2a3a4e","stroke-width":1.4,opacity:.28,"stroke-dasharray":"3 6"}));
+
+  // 2. Trafikverkets mätsträckor i sina köfärger
+  for(const r of (routes||[])){
+    const ratio=routeRatio(r);
+    const lvl=Math.max(levelFromRatio(ratio) ?? 0, statusFloor(r.status));
+    const col=ratio==null ? C.none : LEVEL_COLOR[lvl];
+    const sw=lvl>=2 ? 5.5 : lvl===1 ? 4 : 2.8;
+    for(const p of r.paths){
+      if(p.length<2) continue;
+      svg.appendChild(mkSvg("path",{d:pathOf(p,T),fill:"none",stroke:col,
+        "stroke-width":sw,"stroke-linecap":"round","stroke-linejoin":"round",
+        opacity:ratio==null?.35:.95}));
+    }
+  }
+
+  // 3. kamerorna, numrerade och isärknuffade
+  const spread=spreadPoints((cams||[]).map(c=>c.pt).filter(Boolean),550);
+  spread.forEach((pt,i)=>{
+    const real=cams[i] && cams[i].pt;
     if(real && metersBetween(real,pt)>80)
-      L.polyline([real,pt],{color:"#cfe4ff",weight:1,opacity:.45}).addTo(layerCam);
+      svg.appendChild(mkSvg("path",{d:pathOf([real,pt],T),fill:"none",
+        stroke:"#cfe4ff","stroke-width":1,opacity:.45}));
+    const [x,y]=T.px(pt[0],pt[1]);
+    svg.appendChild(mkSvg("circle",{cx:x,cy:y,r:8,fill:"#cfe4ff",
+      stroke:"#0a0e13","stroke-width":2}));
+    const t=mkSvg("text",{x:x,y:y,class:"camnum","text-anchor":"middle",
+      "dominant-baseline":"central"});
+    t.textContent=String(i+1);
+    svg.appendChild(t);
   });
+
+  // 4. hemmapunkten
+  const [hx,hy]=T.px(CONFIG.home.lat,CONFIG.home.lon);
+  svg.appendChild(mkSvg("circle",{cx:hx,cy:hy,r:5,fill:"#4da3ff",
+    stroke:"#ffffff","stroke-width":2}));
+
+  // 5. ortnamn med sina pixeloffset
+  for(const [lat,lon,label,dx,dy] of (M.places||[])){
+    const [x,y]=T.px(lat,lon);
+    if(x<-40||x>w+40||y<-20||y>h+20) continue;     // utanför rutan
+    const t=mkSvg("text",{x:x+(dx??8),y:y+(dy??-4),class:"placelbl"});
+    t.textContent=label;
+    svg.appendChild(t);
+  }
+
+  // 6. källhänvisning
+  const a=mkSvg("text",{x:w-6,y:h-6,class:"mapattr","text-anchor":"end"});
+  a.textContent=M.tileAttribution||"trafikdata Trafikverket";
+  svg.appendChild(a);
+
+  host.replaceChildren(svg);
 }
 
 /* ==================================================================== *
  *  6. RENDERING                                                         *
  * ==================================================================== */
 const el = id => document.getElementById(id);
+
+/** Tar bort rader underifrån tills innehållet ryms i sin ruta.
+ *  Enda stället där verklig layouthöjd finns är i webbläsaren, så listorna
+ *  anpassas efter rendering istället för att gissa antal rader i förväg.
+ *  Halva avhuggna rader blir därmed aldrig kvar, och inget kort försvinner. */
+function fitRows(host, selector, showNote){
+  if(!host) return;
+  const rows=()=>[...host.querySelectorAll(selector)];
+  const fore=rows().length;              // renderade rader, inte totalt i datan
+  let guard=0;
+  while(host.scrollHeight>host.clientHeight+1 && rows().length>1 && guard++<80){
+    rows().pop().remove();
+  }
+  const note=host.querySelector(".fitmore");
+  if(note) note.remove();
+  if(!showNote) return;
+  const kapade=fore-rows().length;
+  if(kapade<=0) return;
+  // Notisen tar själv plats — ge den en rad genom att kapa en till.
+  if(rows().length>1) rows().pop().remove();
+  const n=document.createElement("div");
+  n.className="busmore fitmore";
+  n.textContent="+"+(fore-rows().length)+" fler";
+  host.appendChild(n);
+}
+
+/** Anpassa listorna som kan bli för höga för sina rutor. */
+function fitAll(){
+  fitRows(el("buses"), ".busrow", true);
+  fitRows(el("legs"),  ".legrow", false);
+}
 let legState={};
 
 /* Avstängning: Trafikverkets avvikelsefeed (objekttypen Situation) finns
@@ -1199,7 +1240,8 @@ function renderLegs(){
     .filter(k=>legState[k])
     .sort((a,b)=> (legState[b].level??-1)-(legState[a].level??-1)
                || (legState[b].delay||0)-(legState[a].delay||0));
-  for(const k of keys.slice(0,6)){
+  // Alla leder renderas; fitRows kapar till det som ryms i panelen.
+  for(const k of keys){
     const s=legState[k], cfg=CONFIG.legs[k];
     const has=s.coveredKm>0;
     const col=has?levelColor(s.level):C.none;
@@ -1281,13 +1323,9 @@ function renderBuses(stops){
     all.sort((a,b)=>(a.d.minutes??1e9)-(b.d.minutes??1e9));
     if(!all.length){ host.innerHTML=`<div class="empty">inga avgångar mot stan</div>`; return; }
     host.classList.add("merged");
+    // Rendera upp till maxRows och låt fitRows() kapa till det som ryms.
     for(const x of all.slice(0,CONFIG.buses.maxRows))
       host.appendChild(busRow(x.d, x.label, x.primary));
-    if(all.length>CONFIG.buses.maxRows){
-      const more=document.createElement("div"); more.className="busmore";
-      more.textContent="+"+(all.length-CONFIG.buses.maxRows)+" fler mot stan";
-      host.appendChild(more);
-    }
     return;
   }
 
@@ -1458,6 +1496,7 @@ function mockData(){
  *  8. HUVUDLOOP                                                         *
  * ==================================================================== */
 let lastGood=null, lastError=null, knownCameras=[], busStops=[];
+let lastRoutes=[], lastCams=[];
 
 function computeLegLengths(){
   for(const k in CONFIG.legs){
@@ -1519,15 +1558,12 @@ async function refresh(){
 
   // Utsnittet: kamerorna alltid, och i "measured" även allt Trafikverket
   // mäter — annars blev halva kartrutan tom.
-  if(!mapBroken){
-    const fitPts=cams.map(c=>c.pt).filter(Boolean);
-    if(CONFIG.map.fitMode==="measured")
-      for(const r of routes) for(const p of r.coords) fitPts.push(p);
-    applyFit(computeFit(fitPts));
-    drawSegments(routes); drawCameras(cams);
-  }
+  lastRoutes=routes; lastCams=cams;
+  if(!mapBroken) drawMap(routes, cams);
   renderBanner(); renderDestinations(); renderLegs();
   renderBuses(busStops); renderCameras(cams);
+  // Först efter att webbläsaren räknat om layouten vet vi vad som ryms.
+  requestAnimationFrame(fitAll);
 
   lastGood=new Date();
   updateStamp();
@@ -1584,17 +1620,26 @@ function showDebug(routes,cams){
 
 /* ---- start ---- */
 computeLegLengths();
-// Kartan får inte kunna fälla resten av tavlan. Går Leaflet inte att ladda
-// syns orsaken i kartrutan istället för att allt blir tomt.
-try{
-  if(typeof L==="undefined") throw new Error("Leaflet kunde inte laddas från cdnjs");
-  initMap();
-}catch(e){
+// Kartan får inte kunna fälla resten av tavlan.
+try{ initMap(); }
+catch(e){
   mapBroken=true;
   el("map").innerHTML=`<div class="maperr">Kartan kunde inte ritas<br><small>`+
     esc(e.message)+`</small></div>`;
 }
 renderDestinations(); renderLegs();
+
+// Ändrad fönsterstorlek ger en ny höjdbudget — rendera om och anpassa
+// antalet rader efter den.
+let fitTimer=null;
+window.addEventListener("resize",()=>{
+  clearTimeout(fitTimer);
+  fitTimer=setTimeout(()=>{
+    renderDestinations(); renderLegs(); renderBuses(busStops);
+    if(!mapBroken) drawMap(lastRoutes, lastCams);
+    requestAnimationFrame(fitAll);
+  },250);
+});
 
 if(!MOCK && !apiKey){
   showSetup();
