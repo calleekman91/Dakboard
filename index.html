@@ -4,7 +4,36 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tollare → Stockholm · Reseplanerare</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  /* ==== Leaflets kärnregler, inlagda med flit ====================
+     Hämtades tidigare från cdnjs. Blockeras den hämtningen — brandvägg,
+     proxy, eller en skärm utan full nätåtkomst — så fungerar Leaflets
+     JavaScript ändå, men lagren får ingen positionering och kartan blir
+     helt osynlig medan resten av tavlan ser normal ut. Därför ligger
+     reglerna här. Bara det som behövs för en karta utan kartbild.     */
+  .leaflet-pane,.leaflet-tile,.leaflet-marker-icon,.leaflet-marker-shadow,
+  .leaflet-tile-container,.leaflet-pane>svg,.leaflet-pane>canvas,
+  .leaflet-zoom-box,.leaflet-image-layer,.leaflet-layer
+    {position:absolute;left:0;top:0}
+  .leaflet-container{overflow:hidden;position:relative;touch-action:none}
+  .leaflet-container img{max-width:none!important;padding:0}
+  .leaflet-pane{z-index:400}
+  .leaflet-tile-pane{z-index:200}
+  .leaflet-overlay-pane{z-index:400}
+  .leaflet-marker-pane{z-index:600}
+  .leaflet-tooltip-pane{z-index:650}
+  .leaflet-popup-pane{z-index:700}
+  .leaflet-control-container{position:absolute;inset:0;pointer-events:none;z-index:800}
+  .leaflet-top{position:absolute;top:0} .leaflet-bottom{position:absolute;bottom:0}
+  .leaflet-left{left:0} .leaflet-right{right:0}
+  .leaflet-control{position:relative;float:right;clear:both;pointer-events:auto}
+  .leaflet-control-attribution{padding:0 5px;margin:0}
+  .leaflet-marker-icon{width:auto!important;height:auto!important}
+  .leaflet-tooltip{position:absolute;padding:2px;white-space:nowrap;pointer-events:none}
+  .leaflet-zoom-animated{transform-origin:0 0}
+  .leaflet-interactive{cursor:pointer}
+  /* ================================================================ */
+</style>
 <style>
   :root{
     --bg:#0a0e13; --panel:#111823; --panel2:#0e141d; --line:#1e293b;
@@ -50,11 +79,17 @@
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
 
   /* Kartkolumnen får mer plats än ruttkolumnen — namnen behöver inte bredden. */
-  main{flex:1 1 auto;display:grid;grid-template-columns:0.82fr 1fr;gap:.9vw;min-height:0}
-  .col{display:flex;flex-direction:column;gap:.8vh;min-height:0}
+  main{flex:1 1 auto;display:grid;grid-template-columns:0.82fr 1fr;gap:.9vw;
+    min-height:0;overflow:hidden}
+  /* overflow:hidden är skyddsnätet: utan det målade en för hög vänsterkolumn
+     rakt över kameraraden istället för att hålla sig i sin ruta. */
+  .col{display:flex;flex-direction:column;gap:.8vh;min-height:0;overflow:hidden}
 
   .dest{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
-    padding:.9vh 1vw;display:flex;flex-direction:column;gap:.6vh;flex:1 1 0;min-height:0;overflow:hidden}
+    padding:.85vh 1vw;display:flex;flex-direction:column;gap:.45vh;flex:0 0 auto}
+  /* Korten får naturlig höjd. Tidigare tvingades de lika höga och klippte
+     då bort sista rutten. Överbliven höjd hamnar i .spacer. */
+  .spacer{flex:1 1 auto;min-height:0}
   .dest h2{margin:0;font-size:1.15em;font-weight:600;color:var(--muted);
     text-transform:uppercase;letter-spacing:.09em;display:flex;align-items:center;gap:.6em}
   .dest h2 .km{color:var(--dim);text-transform:none;letter-spacing:0;font-weight:400}
@@ -76,11 +111,65 @@
   /* Varje delsträcka namnges i stapeln, annars går det inte att se vilken
      del av vägen som är röd. */
   .legbar{grid-column:1/-1;display:flex;gap:2px;height:1.85vh;border-radius:5px;overflow:hidden}
-  .legbar b{display:flex;align-items:center;justify-content:center;height:100%;min-width:0;
-    overflow:hidden;white-space:nowrap;font-size:.92em;font-weight:700;
-    color:#08111c;letter-spacing:.01em}
-  .legbar b.nodata{color:#7d8da3;background-image:repeating-linear-gradient(45deg,
-    rgba(255,255,255,.10) 0 3px,transparent 3px 6px)}
+  /* min-width ger korta sträckor plats för sitt namn — färjeöverfarterna är
+     bara någon kilometer av en 70 km-rutt och fick annars bara "fä". */
+  .legbar b{display:flex;align-items:center;justify-content:center;height:100%;
+    min-width:3em;overflow:hidden;font-size:.92em;font-weight:700;
+    color:#08111c;letter-spacing:.01em;padding:0 .25em}
+  .legbar b span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* Omätt: tydliga diagonalstreck så att grått inte förväxlas med "fri väg" */
+  .legbar b.nodata{color:#93a4b8;background-image:repeating-linear-gradient(45deg,
+    rgba(255,255,255,.14) 0 4px,rgba(255,255,255,0) 4px 9px)}
+
+  /* ---------- bussavgångar ---------- */
+  .destwrap{display:flex;flex-direction:column;gap:.7vh;flex:0 0 auto}
+  /* Busskortet tar den höjd som blir kvar och klipper sig självt vid behov —
+     bilkorten ska aldrig behöva krympa. */
+  .dest.bus{flex:1 1 auto;min-height:0;overflow:hidden}
+  #buses{min-height:0;overflow:hidden}
+  .bustop{font-size:1em;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;
+    margin-top:.35vh;border-top:1px solid var(--line);padding-top:.35vh}
+  #buses>.bustop:first-child{border-top:0;margin-top:0;padding-top:0}
+  /* Fasta kolumnbredder — med auto blev vänsterkanten på hållplats- och
+     punktlighetskolumnen ojämn rad för rad. */
+  .busrow{display:grid;grid-template-columns:2.7em 1fr 5.4em 7.6em;gap:.5vw;
+    align-items:center;font-size:1.14em;padding:.14vh 0}
+  /* kronologisk lista: en kolumn extra för hållplatsen */
+  #buses.merged .busrow{grid-template-columns:2.7em 1fr 9.4em 5.4em 7.6em}
+  /* beräknad avgång stor, tidtabellen liten intill */
+  .busrow .clock{text-align:right;white-space:nowrap;
+    display:flex;align-items:baseline;justify-content:flex-end;gap:.4em}
+  .busrow .clock b{font-weight:700;font-size:1.06em}
+  .busrow .clock em{font-style:normal;color:var(--dim);font-size:.82em}
+  .busrow .clock.soon b{color:var(--ok)}
+  .busrow .hpl{color:var(--dim);font-size:.8em;text-transform:uppercase;
+    letter-spacing:.05em;white-space:nowrap;text-align:left;
+    overflow:hidden;text-overflow:ellipsis}
+  /* Hemmahållplatsen lyfts fram — det är den du går till. Markeringen är
+     tonplattan och det accentfärgade hållplatsnamnet; kantlinjen till
+     vänster såg ut som en klammer och är borttagen. */
+  .busrow.prim{background:rgba(77,163,255,.07);border-radius:5px}
+  .busrow.prim .hpl{color:var(--accent);font-weight:700}
+  .maperr{height:100%;display:grid;place-items:center;text-align:center;
+    color:var(--muted);font-size:1.2em;line-height:1.5}
+  .maperr small{color:var(--dim);font-size:.75em}
+  .busrow .pt{font-size:.82em;font-weight:650;white-space:nowrap;text-align:right}
+  .busrow .pt.ontime{color:var(--ok)}
+  .busrow .pt.warn{color:var(--warn)}
+  .busrow .pt.bad{color:var(--crit)}
+  .busrow .pt.early{color:var(--accent)}
+  .busrow .pt.plan{color:var(--dim);font-weight:400}
+  .busrow .ln{background:#1d2a3a;color:#cfe4ff;font-weight:700;text-align:center;
+    border-radius:5px;padding:.08em 0;font-size:.92em}
+  .busrow .to{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .busrow .to i{color:var(--warn);font-style:normal;font-weight:700}
+  .busrow .to u{text-decoration:none;font-size:.74em;font-weight:700;letter-spacing:.04em;
+    color:var(--warn);border:1px solid rgba(240,180,41,.45);border-radius:4px;
+    padding:.05em .3em;margin-left:.2em;vertical-align:.08em}
+  .busrow.cancelled{opacity:.55}
+  .busrow.cancelled .to{text-decoration:line-through}
+  .busrow.cancelled .when{color:var(--crit)}
+  .busmore{color:var(--dim);font-size:.95em;padding-top:.1vh}
 
   #map{flex:1 1 auto;min-height:20vh;border-radius:var(--r);border:1px solid var(--line);background:#0e141d}
   .leaflet-container{background:#0e141d;font-family:inherit}
@@ -99,7 +188,7 @@
   .panel h3{margin:0 0 .2vh;font-size:1.05em;font-weight:600;color:var(--muted);
     text-transform:uppercase;letter-spacing:.09em}
   /* Kartan behöver höjd för att inte bli en tunn remsa — ledlistan hålls kort. */
-  #legpanel{flex:0 0 auto;max-height:16vh}
+  #legpanel{flex:0 0 auto;max-height:15vh}
 
   .legrow{display:grid;grid-template-columns:1.2em 1fr auto auto;gap:.7vw;align-items:center;
     font-size:1.12em;padding:.18vh 0}
@@ -110,7 +199,7 @@
 
   .empty{color:var(--dim);font-size:1.05em;padding:.4vh 0}
 
-  .cams{flex:0 0 auto;height:21vh;min-height:0;display:grid;
+  .cams{flex:0 0 auto;height:19vh;min-height:0;display:grid;
     grid-template-columns:repeat(6,1fr);gap:.7vw}
   .cam{position:relative;margin:0;border-radius:var(--r);overflow:hidden;
     border:1px solid var(--line);background:var(--panel2)}
@@ -160,7 +249,13 @@
   <header><div class="stamp" id="stamp">startar…</div></header>
 
   <main>
-    <div class="col" id="dests"></div>
+    <div class="col">
+      <div id="dests" class="destwrap"></div>
+      <div class="dest bus">
+        <h2>Buss in mot stan<span class="km">SL, live</span></h2>
+        <div id="buses"><div class="empty">hämtar avgångar…</div></div>
+      </div>
+    </div>
     <div class="col">
       <div class="banner warn" id="banner">
         <div class="dot"></div>
@@ -225,10 +320,28 @@ const CONFIG = {
     /* Utsnittet måste ha ungefär samma proportion som kartrutan, annars
        blåser Leaflet upp längden och allt hamnar i en klump i mitten.
        Rutan är ca 1,8:1 → 0,08° lat (9 km) mot 0,29° lon (16 km). */
-    focus:  [[59.282,17.930],[59.362,18.220]],
+    /* Utsnittet räknas ur dessa leder plus hemmapunkten och de visade
+       kamerorna. De långa svansarna (E4 mot Södertälje, Huddingevägen och
+       Vaxholmsgrenen) ritas men styr inte zoomen — annars blir kärnan en
+       klump i mitten. */
+    fitLegs: ["L222E","L222W","LSL","LE4LJ","LESS","LE4N","LCITY","LSOD","LSTG"],
     county: [[59.15,17.62],[59.42,18.24]],
     dynamicFit: true,
-    padWhenExpanding: 0.010,
+    padWhenExpanding: 0.012,
+
+    /* Hur utsnittet väljs:
+         "measured" – allt Trafikverket mäter i länet. Kartrutan är nästan
+                      dubbelt så bred som hög, och pendlingskärnan är nästan
+                      kvadratisk, så "legs" lämnar stora tomma fält. Med
+                      "measured" fylls bredden av riktiga vägar istället.
+         "legs"     – bara sträckorna i fitLegs. Mer inzoomat, men tomt i
+                      kanterna.                                              */
+    fitMode: "measured",
+
+    /* Rita bara skisslinjer för de leder som hör till fitLegs. Färjegrenen
+       mot Rindö–Vaxholm är raka streck över skärgården och såg ut som ett
+       fel på kartan. */
+    skeletonLegsOnly: true,
     tileUrl: null,
     tileAttribution: 'trafikdata Trafikverket',
     tileMaxZoom: 19,
@@ -246,8 +359,10 @@ const CONFIG = {
       [59.3435,18.0100,"Karlberg",   -62,  -2],
       [59.3600,18.0250,"Solna",      -12, -16],
       [59.4030,17.9440,"Kista",      -36, -16],
+      [59.4370,17.9330,"Häggvik",    -50,  -6],
       [59.2370,17.9820,"Huddinge",    10,  10],
-      [59.3720,18.3130,"Vaxholm",     10,  -4]
+      [59.1950,17.6420,"Södertälje",  10,  -4],
+      [59.4030,17.8600,"Rinkeby",    -44, -16]
     ]
   },
 
@@ -262,15 +377,18 @@ const CONFIG = {
      Leder utan include har ingen mätning (lokalgator) → visar normaltid.
   ------------------------------------------------------------------- */
   legs: {
-    L222E: { name:"Värmdöleden 222 · Tollare–Nacka", short:"222", freeFlow:6, km:4,
+    L222E: { name:"Värmdöleden 222 · Tollare–Nacka", short:"222", label:"Värmdöleden",
+      freeFlow:6, km:4,
       include:/^222 V\b/,
       polyline:[[59.3200,18.2130],[59.3160,18.2050],[59.3130,18.1930],[59.3105,18.1800],[59.3095,18.1660]] },
 
-    L222W: { name:"Värmdöleden 222 · Nacka–Danvikstull", short:"222v", freeFlow:6, km:4.5,
+    L222W: { name:"Värmdöleden 222 · Nacka–Danvikstull", short:"222v", label:"Värmdöleden v",
+      freeFlow:6, km:4.5,
       include:/^222 V\b/,
       polyline:[[59.3095,18.1660],[59.3085,18.1500],[59.3085,18.1330],[59.3105,18.1180],[59.3140,18.1040]] },
 
-    LSL:   { name:"Södra länken västerut (väg 75)", short:"SL", freeFlow:6, km:8,
+    LSL:   { name:"Södra länken västerut (väg 75)", short:"SL", label:"Södra länken",
+      freeFlow:6, km:8,
       include:/^75 V\b/,
       polyline:[[59.3085,18.1620],[59.3030,18.1420],[59.2975,18.1180],[59.2940,18.0930],
                 [59.2925,18.0680],[59.2950,18.0480],[59.2942,18.0330],[59.2935,18.0100]] },
@@ -279,16 +397,18 @@ const CONFIG = {
       include:/^E4\/E20 N\b/,
       polyline:[[59.2935,18.0100],[59.2975,18.0080],[59.3015,18.0120],[59.3045,18.0200],[59.3058,18.0240]] },
 
-    LESS:  { name:"Essingeleden norrut (E4/E20)", short:"Ess", freeFlow:5, km:6,
+    LESS:  { name:"Essingeleden norrut (E4/E20)", short:"Ess", label:"Essingeleden",
+      freeFlow:5, km:6,
       include:/^E4\/E20 N\b/,
       polyline:[[59.3060,18.0230],[59.3100,18.0050],[59.3160,17.9950],[59.3230,17.9930],
                 [59.3310,17.9990],[59.3385,18.0070],[59.3435,18.0140]] },
 
-    LE4N:  { name:"E4 Karlberg–Norrtull–Kista norrut", short:"E4N", freeFlow:10, km:12,
+    LE4N:  { name:"E4 Karlberg–Norrtull–Häggvik norrut", short:"E4N", freeFlow:13, km:16,
       include:/^(E4|E20|E4\/E20) N\b/,
       polyline:[[59.3435,18.0140],[59.3465,18.0300],[59.3480,18.0430],[59.3540,18.0360],
                 [59.3610,18.0270],[59.3680,18.0150],[59.3750,18.0030],[59.3820,17.9880],
-                [59.3890,17.9720],[59.3960,17.9560],[59.4020,17.9450]] },
+                [59.3890,17.9720],[59.3960,17.9560],[59.4030,17.9450],[59.4160,17.9400],
+                [59.4290,17.9360],[59.4370,17.9330]] },
 
     LE4S:  { name:"E4/E20 söderut mot Södertälje", short:"E4S", freeFlow:22, km:26,
       include:/^E4\/E20 S\b/,
@@ -296,12 +416,14 @@ const CONFIG = {
                 [59.2660,17.9020],[59.2560,17.8800],[59.2450,17.8500],[59.2360,17.8180],
                 [59.2270,17.7800],[59.2170,17.7400],[59.2060,17.6950],[59.1980,17.6600],[59.1950,17.6420]] },
 
-    LCITY: { name:"Centralbron / Klarastrandsleden norrut", short:"Cbr", freeFlow:8, km:4.5,
+    LCITY: { name:"Centralbron / Klarastrandsleden norrut", short:"Cbr", label:"Centralbron",
+      freeFlow:8, km:4.5,
       include:/^Nord-Sydaxeln N\b|Centralbron|Klaratunneln|Klarabergsviadukten|^Norrtullstunneln|^E4\/E20 N Karlberg/,
       polyline:[[59.3210,18.0700],[59.3260,18.0640],[59.3300,18.0600],[59.3340,18.0530],
                 [59.3390,18.0440],[59.3430,18.0330],[59.3460,18.0300]] },
 
-    L226:  { name:"Huddingevägen 226 söderut", short:"226", freeFlow:28, km:20,
+    L226:  { name:"Huddingevägen 226 söderut", short:"226", label:"Huddingevägen",
+      freeFlow:28, km:20,
       include:/^226 S\b/,
       polyline:[[59.2900,18.0500],[59.2840,18.0380],[59.2770,18.0250],[59.2690,18.0130],
                 [59.2600,18.0020],[59.2510,17.9930],[59.2420,17.9820],[59.2350,17.9650],
@@ -310,7 +432,8 @@ const CONFIG = {
     /* --- Skärgårdsvägen via Rindö och Vaxholm ---
        Två av Trafikverkets färjeleder. freeFlow = överfarten; väntetiden
        räknas live ur tidtabellen (FerryAnnouncement). */
-    L222O: { name:"Värmdöleden 222 österut · Tollare–Stenslätten", short:"222ö", freeFlow:20, km:18,
+    L222O: { name:"Värmdöleden 222 österut · Tollare–Stenslätten", short:"222ö",
+      label:"Värmdöleden ö", freeFlow:20, km:18,
       include:/^222 O\b/,
       polyline:[[59.3200,18.2130],[59.3230,18.2400],[59.3260,18.2700],[59.3290,18.3050],
                 [59.3320,18.3400],[59.3390,18.3700],[59.3480,18.3900]] },
@@ -332,19 +455,23 @@ const CONFIG = {
       polyline:[[59.3720,18.3130],[59.3900,18.2700],[59.4100,18.2200],[59.4300,18.1600],
                 [59.4450,18.1200],[59.4540,18.1000]] },
 
-    // E18 från Arninge går sydväst via Danderyd till Järva krog och sedan
-    // västerut mot Kista — inte den norra bågen.
-    LE18:  { name:"E18 Arninge–Danderyd–Kista", short:"E18", freeFlow:16, km:15,
-      include:/^E18 V\b/,
+    // E18 från Arninge går sydväst via Danderyd till Järva krog, därefter
+    // E4 norrut till Häggvik.
+    LE18:  { name:"E18/E4 Arninge–Danderyd–Häggvik", short:"E18", freeFlow:20, km:20,
+      include:/^(E18|E4) [VN]\b/,
       polyline:[[59.4540,18.1000],[59.4380,18.0800],[59.4200,18.0600],[59.4020,18.0400],
-                [59.3900,18.0100],[59.3820,17.9950],[59.3900,17.9600],[59.4000,17.9450]] },
+                [59.3900,18.0100],[59.3820,17.9950],[59.3950,17.9700],[59.4150,17.9500],
+                [59.4290,17.9380],[59.4370,17.9330]] },
 
     /* Lokalgator — Trafikverket mäter inte dessa. */
-    LSTG:  { name:"Stadsgårdsleden · Danvikstull–Slussen", short:"Stg", freeFlow:4, km:2.2,
+    LSTG:  { name:"Stadsgårdsleden · Danvikstull–Slussen", short:"Stg",
+      // "Stadsgårdsleden" ryms inte i Häggvik-ruttens fält (2,2 av 27 km).
+      label:"Stadsgården", freeFlow:4, km:2.2,
       include:null,
       polyline:[[59.3140,18.1040],[59.3175,18.0930],[59.3190,18.0830],[59.3195,18.0730]] },
 
-    LSOD:  { name:"Slussen–Liljeholmen (Hornsgatan)", short:"Horn", freeFlow:6, km:4,
+    LSOD:  { name:"Slussen–Liljeholmen (Hornsgatan)", short:"Horn",
+      label:"Hornsgatan", freeFlow:6, km:4,
       include:null,
       polyline:[[59.3180,18.0690],[59.3140,18.0620],[59.3110,18.0520],[59.3090,18.0400],
                 [59.3070,18.0290],[59.3055,18.0240]] }
@@ -355,7 +482,7 @@ const CONFIG = {
         { name:"Södra länken → Årstalänken",     legs:["L222E","LSL","LE4LJ"],                        extra:5 },
         { name:"Genom stan · Slussen–Hornsgatan",legs:["L222E","L222W","LSTG","LSOD"],                extra:5 }
     ]},
-    { name:"Solna / Kista", routes:[
+    { name:"Häggvik", routes:[
         { name:"Södra länken → Essingeleden",    legs:["L222E","LSL","LE4LJ","LESS","LE4N"],          extra:4 },
         { name:"Genom stan · Centralbron",       legs:["L222E","L222W","LSTG","LCITY","LE4N"],        extra:5 },
         { name:"Via Rindö–Vaxholm (2 färjor)",   legs:["L222O","LFOX","LRIN","LFVAX","L274","LE18"],  extra:4 }
@@ -368,6 +495,53 @@ const CONFIG = {
 
   /* Banderollen: hemmasträckan in mot stan. */
   watch: { legs:["LSL","L222E","L222W"], label:"Södra länken från Värmdöhållet" },
+
+  /* --- Bussavgångar (SL) ---------------------------------------------
+     SL Transport kräver INGEN nyckel och tillåter anrop från webbsidor.
+     Hållplats-id hittas på https://transport.integration.sl.se/v1/sites
+  ------------------------------------------------------------------- */
+  buses: {
+    /* Vilka linjer som finns var (kontrollerat mot SL):
+         Tollare torg     – 414 mot Slussen, 442C mot Boo backe
+         Hedenströms väg  – 442 mot Slussen, 414 mot Orminge
+       Linjerna 413, 422, 444, 445 och 471 passerar ingen av dem — de går från
+       Centralplan i Nacka (hållplats 4108), som SL:s reseplanerare föreslår
+       som bytespunkt. Lägg tillbaka den raden om du vill se dem. */
+    stops: [
+      { id:914,  name:"Tollare torg",     short:"Tollare torg", primary:true },
+      { id:1047, name:"Hedenströms väg",  short:"Hedenström" }
+    ],
+
+    /* false = en kronologisk lista över alla hållplatser. Med tre hållplatser
+       och en kvot per hållplats missade man annars merparten av avgångarna
+       vid Centralplan, som har 16 turer mot stan. true = grupperat per
+       hållplats med perStop rader var. */
+    groupByStop: false,
+    maxRows: 10,           // rader i den kronologiska listan
+
+    /* Passerar samma buss flera hållplatser visas den bara vid den första i
+       listan ovan — Tollare torg går alltså före Hedenströms väg. */
+    dedupeAcrossStops: true,
+    perStop: 3,            // antal avgångar per hållplats (resten visas som "+n fler")
+    forecastMinutes: 180,  // hur långt fram SL ska titta
+    transport: "BUS",
+    soonMinutes: 3,        // markera avgångar som går nu
+    forecastTrustMinutes: 20,  // inom så många min litar vi på "i tid"
+    lateMinutes: 2,        // från så många minuter räknas det som försening
+
+    /* Alla bussar som går i riktning mot stan, oavsett var turen slutar.
+       SL har två skilda fält:
+         direction   – linjeriktningens namn, t.ex. "Slussen"
+         destination – just den turens slutstation, kan vara kortvänd
+       En kortvänd tur mot stan har alltså rätt direction men annan
+       destination, och skulle försvinna om man filtrerade på destination.
+       direction_code 2 är riktningen mot stan — kontrollerat på 414, 442,
+       413, 422, 444, 445, 471 och 492 vid alla tre hållplatserna. Mönstret
+       ligger kvar som komplement för linjer med annan kodkonvention. */
+    inboundOnly: true,
+    inboundDirectionCode: 2,
+    inboundPattern: /slussen|stockholm|city|centralen|ropsten|gullmarsplan/i
+  },
 
   cameras: {
     count: 6, maxPerLeg: 2, maxDistanceMeters: 1600,
@@ -616,6 +790,93 @@ const fetchRoutes  = () => tvQuery("TravelTimeRoute","1.5",ROUTE_QUERY);
 const fetchCameras = () => tvQuery("Camera","1.0",CAMERA_QUERY);
 const fetchFerries = () => tvQuery("FerryAnnouncement","1.2",FERRY_QUERY());
 
+/* ---- bussar (SL Transport, ingen nyckel) --------------------------- */
+const SL_ENDPOINT = "https://transport.integration.sl.se/v1/sites";
+
+async function fetchStopDepartures(stop){
+  const url = `${SL_ENDPOINT}/${stop.id}/departures`+
+              `?transport=${encodeURIComponent(CONFIG.buses.transport)}`+
+              `&forecast=${CONFIG.buses.forecastMinutes}`;
+  const res = await fetch(url);
+  if(!res.ok) throw new Error(`HTTP ${res.status} (${stop.name})`);
+  const j = await res.json();
+  return readDepartures(stop, j);
+}
+
+/** Plockar ut det som ska visas ur SL:s svar.
+ *  Punktlighet = expected − scheduled. OBS: SL sätter expected = scheduled
+ *  för turer som ännu inte rullar, så diff 0 långt fram betyder "ingen
+ *  prognos än" — inte "i tid". Därför kräver omdömet att avgången är nära. */
+function readDepartures(stop, payload){
+  const B=CONFIG.buses;
+  let list=(payload && payload.departures) || [];
+  if(B.inboundOnly){
+    list=list.filter(d=>{
+      if(Number(d.direction_code)===B.inboundDirectionCode) return true;
+      // Riktningens namn, inte turens slutstation — kortvända turer räknas.
+      return B.inboundPattern.test(String(d.direction||""));
+    });
+  }
+  const deps=list.map(d=>{
+    const sched=Date.parse(d.scheduled || "");
+    const exp  =Date.parse(d.expected  || "");
+    const t    =Number.isFinite(exp) ? exp : sched;
+    const delay=(Number.isFinite(exp) && Number.isFinite(sched))
+      ? Math.round((exp-sched)/60000) : null;
+    const minutes=Number.isFinite(t) ? Math.round((t-Date.now())/60000) : null;
+    const dest=d.destination || d.direction || "";
+    const dir =d.direction || "";
+    return {
+      line: String((d.line&&d.line.designation) ?? "?"),
+      to:   dest,
+      // Kortvänd: turen slutar före riktningens ändstation.
+      shortTurn: !!(dir && dest && dest!==dir),
+      direction: dir,
+      // Egna kolumner istället för SL:s display, som växlar mellan
+      // "7 min" och "12:35" beroende på hur nära avgången ligger.
+      countdown: minutes==null ? (d.display||"–")
+               : minutes<=0 ? "Nu" : minutes+" min",
+      // clock = beräknad avgång (SL:s prognos), schedClock = tidtabellen
+      clock: Number.isFinite(t)
+        ? two(new Date(t).getHours())+":"+two(new Date(t).getMinutes()) : "",
+      schedClock: Number.isFinite(sched)
+        ? two(new Date(sched).getHours())+":"+two(new Date(sched).getMinutes()) : "",
+      // OBS: journey.id är inte unikt mellan linjer — samma id förekommer
+      // på både 442 och 422. Nyckeln måste vara linje + tur.
+      journeyId: (d.journey && d.journey.id!=null) ? String(d.journey.id) : null,
+      minutes, delay,
+      // Prognos finns om SL avviker från tabellen, eller om bussen är nära.
+      live: delay!==null && (delay!==0 || (minutes!=null && minutes<=CONFIG.buses.forecastTrustMinutes)),
+      cancelled: String(d.state||"").toUpperCase()==="CANCELLED",
+      notes: (d.deviations||[]).map(x=>x.message).filter(Boolean)
+    };
+  }).sort((a,b)=>(a.minutes??1e9)-(b.minutes??1e9));
+  return {
+    // Hela hållplatsen förs vidare — short och primary tappades annars.
+    ...stop,
+    departures: deps,
+    notes: ((payload&&payload.stop_deviations)||[]).map(x=>x.message).filter(Boolean)
+  };
+}
+
+/** Samma buss passerar ofta flera av hållplatserna. Visa den bara vid den
+ *  första i CONFIG.buses.stops — ordningen i listan är prioriteringen.
+ *  Nyckeln är linje + tur: journey.id är inte unikt mellan linjer. */
+function dedupeAcrossStops(stops){
+  if(!CONFIG.buses.dedupeAcrossStops) return stops;
+  const seen=new Set();
+  return stops.map(s=>({
+    ...s,
+    departures: s.departures.filter(d=>{
+      if(d.journeyId==null) return true;          // utan tur-id kan vi inte veta
+      const key=d.line+"|"+d.journeyId;
+      if(seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+  }));
+}
+
 /** Väntetid och nästa avgångar för en färjeled i vår färdriktning. */
 function ferryWait(announcements, ferry){
   const now=Date.now();
@@ -645,12 +906,15 @@ function readCamera(o){
     direction: Number(pickField(o,["Direction"])),
     photoTime: pickField(o,["PhotoTime","ModifiedTime"]),
     // Utan PhotoUrl finns ingen bild att visa — Id går inte att bygga URL av.
-    ok: !!(id && pt && url && /^https?:\/\//i.test(url)) &&
+    // data: tillåts för demolägets platshållarbilder.
+    ok: !!(id && pt && url && /^(https?:\/\/|data:)/i.test(url)) &&
         (!status || /available/i.test(status))
   };
 }
 function cameraImageUrl(cam, fullsize){
-  const base = String(cam.photoUrl).split("?")[0];
+  const url=String(cam.photoUrl||"");
+  if(/^data:/i.test(url)) return url;              // platshållare i demoläget
+  const base = url.split("?")[0];
   const stamp = Date.parse(cam.photoTime||"") || Date.now();
   return base+"?"+((fullsize && cam.fullsize!==false)?"type=fullsize&":"")+"maxage=1&_="+stamp;
 }
@@ -687,22 +951,34 @@ function scoreCameras(cams, legs, states, cfg){
 /* ==================================================================== *
  *  5. KARTA                                                             *
  * ==================================================================== */
-let map, layerLegs, layerSegs, layerCam, currentFit=null;
+let map, layerLegs, layerSegs, layerCam, currentFit=null, mapBroken=false;
 
 /** Utsnittet: normalt pendlingskärnan, utvidgat så att köer och de visade
  *  kamerorna alltid ryms. Punkter utanför länet ignoreras. */
 function computeFit(points){
   const M=CONFIG.map;
-  let [[s,w],[n,e]] = M.focus.map(p=>p.slice());
-  if(M.dynamicFit){
-    const [[cs,cw],[cn,ce]] = M.county;
-    for(const p of (points||[])){
-      if(!p || p[0]<cs || p[0]>cn || p[1]<cw || p[1]>ce) continue;
-      s=Math.min(s,p[0]-M.padWhenExpanding); n=Math.max(n,p[0]+M.padWhenExpanding);
-      w=Math.min(w,p[1]-M.padWhenExpanding); e=Math.max(e,p[1]+M.padWhenExpanding);
+  const pts=[[CONFIG.home.lat,CONFIG.home.lon]];
+  const extra=(points||[]).filter(Boolean);
+  // I "measured" styr de ritade mätsträckorna utsnittet. Innan data kommit
+  // in finns inga — då faller vi tillbaka på lederna.
+  if(M.fitMode!=="measured" || extra.length<5){
+    for(const k of (M.fitLegs||[])){
+      const leg=CONFIG.legs[k];
+      if(leg) for(const p of leg.polyline) pts.push(p);
     }
   }
-  return [[s,w],[n,e]];
+  if(M.dynamicFit) for(const p of extra) pts.push(p);
+
+  const [[cs,cw],[cn,ce]] = M.county;
+  let s=90,w=180,n=-90,e=-180;
+  for(const p of pts){
+    if(p[0]<cs || p[0]>cn || p[1]<cw || p[1]>ce) continue;   // utanför länet
+    s=Math.min(s,p[0]); n=Math.max(n,p[0]);
+    w=Math.min(w,p[1]); e=Math.max(e,p[1]);
+  }
+  if(s>n || w>e) return M.county;
+  const pad=M.padWhenExpanding||0.01;
+  return [[s-pad,w-pad],[n+pad,e+pad]];
 }
 function applyFit(bounds){
   currentFit=bounds;
@@ -730,7 +1006,10 @@ function initMap(){
   // Ledernas polylinjer är grova handritade skisser — de finns för att matcha
   // mätsträckor, inte för att vara karta. Håll dem svaga och streckade så att
   // Trafikverkets verkliga geometri (drawSegments) är det man ser.
-  for(const k in CONFIG.legs)
+  const skeleton = M.skeletonLegsOnly
+    ? (M.fitLegs||[]).filter(k=>CONFIG.legs[k])
+    : Object.keys(CONFIG.legs);
+  for(const k of skeleton)
     L.polyline(CONFIG.legs[k].polyline,
       {color:"#2a3a4e",weight:1.4,opacity:.28,dashArray:"3 6"}).addTo(layerLegs);
 
@@ -832,19 +1111,19 @@ function renderBanner(){
   const delay=watched.reduce((s,x)=>s+(x.st.delay||0),0);
   const v=closureVerdict();
 
-  let cls, title, note;
+  let cls, title, note, caveat=true;
   if(v.code==="stopped"){
-    cls="crit";
+    cls="crit"; caveat=false;
     title="SÖDRA LÄNKEN: STÅR STILL – kan vara avstängt";
-    note="bedömt ur mätdata: "+Math.round(v.st.speed||0)+" km/h västerut";
+    note=Math.round(v.st.speed||0)+" km/h västerut · bedömt ur mätdata, inte officiellt besked";
   }else if(v.code==="nodata"){
-    cls="crit";
+    cls="crit"; caveat=false;
     title="SÖDRA LÄNKEN: ingen mätdata – kan vara avstängt";
-    note="mätsträckorna på 75 västerut har slutat rapportera";
+    note="mätsträckorna på väg 75 västerut har slutat rapportera";
   }else if(v.code==="unknown"){
-    cls="warn";
+    cls="warn"; caveat=false;
     title="Södra länken: vet inte";
-    note="ingen mätdata på 75 västerut ännu";
+    note="ingen mätdata på väg 75 västerut ännu";
   }else{
     const lvl=v.st.level??0;
     cls=["ok","warn","bad","bad"][lvl];
@@ -855,17 +1134,15 @@ function renderBanner(){
   }
   b.className="banner "+cls;
   t.textContent=title;
-  // Kort i den smalare banderollen — hela förklaringen står i LÄS-MIG.
-  m.textContent=note+" · avstängning bedöms ur mätdata";
+  // Förbehållet bara när läget ser normalt ut — vid larm står det i noten.
+  m.textContent=note+(caveat?" · avstängning bedöms ur mätdata":"");
 }
 
 function renderDestinations(){
   const host=el("dests"); host.innerHTML="";
   for(const dest of CONFIG.destinations){
+    // Ingen flex-grow: korten ska ha exakt den höjd innehållet kräver.
     const box=document.createElement("div"); box.className="dest";
-    // Höjden fördelas efter antal rutter, annars blir det tomma luckor i
-    // blocken med få alternativ.
-    box.style.flexGrow = String(dest.routes.length);
     const rows=dest.routes.map(r=>{
       const legs=r.legs.map(k=>({key:k,cfg:CONFIG.legs[k],st:legState[k]||{}}));
       const free=legs.reduce((s,l)=>s+(l.cfg.freeFlow||0),0)+(r.extra||0);
@@ -898,9 +1175,16 @@ function renderDestinations(){
             const col = has ? levelColor(st.level) : C.none;
             const tip = l.cfg.name + (has
               ? " · "+(st.delay>=1 ? "+"+Math.round(st.delay)+" min" : LEVEL_WORD[st.level??0])
-              : " · mäts inte");
+              : " · mäts inte av Trafikverket – restiden är beräknad");
+            // Omätt markeras med diagonalstrecken och texten i title —
+            // inget frågetecken i etiketten. label skrivs ut när sträckan
+            // förtjänar sitt fulla namn, annars kortformen.
+            const txt = l.cfg.label || l.cfg.short || "";
+            // Texten i ett eget span så den kan huggas av med ellips om
+            // fältet ändå blir för smalt — centrerad flextext klipps annars
+            // mitt i ordet i båda ändar.
             return `<b class="${has?"":"nodata"}" style="flex:${l.cfg._km};background:${col}" `+
-                   `title="${esc(tip)}">${esc(l.cfg.short||"")}</b>`;
+                   `title="${esc(tip)}"><span>${esc(txt)}</span></b>`;
           }).join("")+
         `</div>`;
       box.appendChild(div);
@@ -915,7 +1199,7 @@ function renderLegs(){
     .filter(k=>legState[k])
     .sort((a,b)=> (legState[b].level??-1)-(legState[a].level??-1)
                || (legState[b].delay||0)-(legState[a].delay||0));
-  for(const k of keys.slice(0,8)){
+  for(const k of keys.slice(0,6)){
     const s=legState[k], cfg=CONFIG.legs[k];
     const has=s.coveredKm>0;
     const col=has?levelColor(s.level):C.none;
@@ -944,6 +1228,87 @@ function renderLegs(){
   const utan=keys.filter(k=>!(legState[k].coveredKm>0)).length;
   const h3=document.querySelector("#legpanel h3");
   if(h3) h3.textContent = "Belastning per sträcka"+(utan? " · "+utan+" mäts inte" : "");
+}
+
+/** Punktlighetstexten för en avgång. */
+function punctuality(d){
+  const late=CONFIG.buses.lateMinutes;
+  if(d.cancelled) return { text:"", cls:"" };
+  if(!d.live)     return { text:"tidtabell", cls:"plan",
+                           tip:"ingen realtidsprognos än – bussen har inte startat" };
+  if(d.delay>=late)  return { text:"+"+d.delay+" min", cls:d.delay>=5?"bad":"warn",
+                              tip:"försenad mot tidtabell" };
+  if(d.delay<=-late) return { text:d.delay+" min", cls:"early", tip:"före tidtabell" };
+  return { text:"i tid", cls:"ontime" };
+}
+
+/** En avgångsrad. `stopLabel` sätts bara i den kronologiska listan. */
+function busRow(d, stopLabel, primary){
+  const row=document.createElement("div");
+  row.className="busrow"+(d.cancelled?" cancelled":"")+(primary?" prim":"");
+  const soon = d.minutes!=null && d.minutes<=CONFIG.buses.soonMinutes;
+  const p=punctuality(d);
+  row.innerHTML=
+    `<span class="ln">${esc(d.line)}</span>`+
+    `<span class="to">${esc(d.to)}`+
+      (d.shortTurn?' <u title="kortvänd tur – går inte hela vägen till '+
+        esc(d.direction)+'">kort</u>':"")+
+      (d.notes.length?' <i title="'+esc(d.notes.join(" · "))+'">!</i>':"")+
+    `</span>`+
+    (stopLabel!=null ? `<span class="hpl">${esc(stopLabel)}</span>` : "")+
+    `<span class="pt ${p.cls}"${p.tip?' title="'+esc(p.tip)+'"':""}>${esc(p.text)}</span>`+
+    // Beräknad avgång stort, tidtabellen liten under. Nedräkningen i
+    // minuter låg här tidigare men klockslaget är det man planerar efter.
+    `<span class="clock${soon?" soon":""}"`+
+      (d.countdown?` title="om ${esc(d.countdown)}"`:"")+`>`+
+      `<b>${d.cancelled?"inställd":esc(d.clock)}</b>`+
+      (d.schedClock?`<em title="enligt tidtabell">${esc(d.schedClock)}</em>`:"")+
+      `</span>`;
+  return row;
+}
+
+function renderBuses(stops){
+  const host=el("buses"); if(!host) return;
+  host.innerHTML="";
+  if(!stops.length){ host.innerHTML=`<div class="empty">inga avgångar</div>`; return; }
+
+  if(!CONFIG.buses.groupByStop){
+    // Alla hållplatser i en kronologisk lista.
+    const all=[];
+    for(const s of stops)
+      for(const d of s.departures)
+        all.push({ d, label:s.short||s.name, primary:!!s.primary });
+    all.sort((a,b)=>(a.d.minutes??1e9)-(b.d.minutes??1e9));
+    if(!all.length){ host.innerHTML=`<div class="empty">inga avgångar mot stan</div>`; return; }
+    host.classList.add("merged");
+    for(const x of all.slice(0,CONFIG.buses.maxRows))
+      host.appendChild(busRow(x.d, x.label, x.primary));
+    if(all.length>CONFIG.buses.maxRows){
+      const more=document.createElement("div"); more.className="busmore";
+      more.textContent="+"+(all.length-CONFIG.buses.maxRows)+" fler mot stan";
+      host.appendChild(more);
+    }
+    return;
+  }
+
+  host.classList.remove("merged");
+  for(const s of stops){
+    const h=document.createElement("div"); h.className="bustop";
+    h.textContent=s.name;
+    host.appendChild(h);
+    const shown=s.departures.slice(0,CONFIG.buses.perStop);
+    if(!shown.length){
+      const e=document.createElement("div"); e.className="empty";
+      e.textContent="inga avgångar inom "+CONFIG.buses.forecastMinutes+" min";
+      host.appendChild(e); continue;
+    }
+    for(const d of shown) host.appendChild(busRow(d, null, !!s.primary));
+    if(s.departures.length>shown.length){
+      const more=document.createElement("div"); more.className="busmore";
+      more.textContent="+"+(s.departures.length-shown.length)+" fler";
+      host.appendChild(more);
+    }
+  }
 }
 
 function renderCameras(list){
@@ -990,6 +1355,25 @@ function renderCameras(list){
 /* ==================================================================== *
  *  7. DEMOLÄGE (?mock=1)                                                *
  * ==================================================================== */
+/** Platshållarbild till demoläget — en vägbild i grova drag, som data-URI
+ *  så att demot inte behöver nätet. */
+function mockImage(label){
+  const svg =
+    `<svg xmlns='http://www.w3.org/2000/svg' width='480' height='270'>`+
+    `<rect width='480' height='270' fill='#16202c'/>`+
+    `<path d='M0 270 L200 120 L280 120 L480 270 Z' fill='#1e2a38'/>`+
+    `<path d='M240 120 L240 270' stroke='#3a4a5e' stroke-width='3' stroke-dasharray='14 12'/>`+
+    `<path d='M205 120 L60 270' stroke='#2b3a4d' stroke-width='2'/>`+
+    `<path d='M275 120 L420 270' stroke='#2b3a4d' stroke-width='2'/>`+
+    `<rect x='150' y='190' width='34' height='20' rx='4' fill='#4a5c73'/>`+
+    `<rect x='300' y='215' width='40' height='24' rx='4' fill='#4a5c73'/>`+
+    `<rect x='255' y='150' width='24' height='14' rx='3' fill='#3d4d62'/>`+
+    `<rect width='480' height='270' fill='none' stroke='#233043'/>`+
+    `<text x='240' y='40' fill='#5b6b80' font-family='sans-serif' font-size='18'`+
+    ` text-anchor='middle'>demobild · ${label}</text></svg>`;
+  return "data:image/svg+xml;charset=utf-8,"+encodeURIComponent(svg);
+}
+
 function mockData(){
   const rnd=(s=>()=>(s=(s*1103515245+12345)&0x7fffffff)/0x7fffffff)(20260910);
   const load={ LSL:2.4, L222E:1.3, L222W:1.5, LESS:1.7, LCITY:1.9,
@@ -1018,7 +1402,7 @@ function mockData(){
                    " och är riktad mot Stockholm.",
           Type:"Trafikflödeskamera", Status:"videoOrImagesAvailable", HasFullSizePhoto:true,
           PhotoTime:new Date(Date.now()-(2+i)*60000).toISOString(),
-          PhotoUrl:"https://api.trafikinfo.trafikverket.se/v2/Images/data/road.infrastructure.camera/Mock_"+k+i+".jpg",
+          PhotoUrl:mockImage(CONFIG.legs[k].short+" "+i),
           Geometry:{WGS84:`POINT (${mid[1]} ${mid[0]})`} });
       }
     }
@@ -1034,13 +1418,46 @@ function mockData(){
       ferries.push({ DepartureTime:new Date(Date.now()+(6+i*20)*60000).toISOString(),
         FromHarbor:{Name:from}, ToHarbor:{Name:to}, Route:{Id:routeId,Name:name} });
   }
-  return { routes, cams, ferries };
+  // bussavgångar i SL:s format
+  // ett av varje punktlighetsläge: sen, i tid, tidig, utan prognos, inställd
+  const fall=[ {min:3,  dly:4},  {min:8,  dly:0},  {min:12, dly:7},
+               {min:17, dly:-3}, {min:26, dly:0, cancel:true},
+               {min:38, dly:0},  {min:47, dly:0} ];
+  // Varje hållplats har egna turer — tidigare låtsades demot att samma buss
+  // gick från alla tre, vilket gav falska dubbletter.
+  const linjer=["414","442","445"];
+  const mkDep=(min,dly,journeyId,line,opts)=>{
+    const exp=new Date(Date.now()+min*60000);
+    const sched=new Date(exp.getTime()-dly*60000);
+    const o=opts||{};
+    return { line:{designation:line}, journey:{id:journeyId},
+      direction: o.outbound ? "Orminge centrum" : "Slussen",
+      direction_code: o.outbound ? 1 : 2,
+      destination: o.outbound ? "Orminge centrum" : (o.shortTurn ? "Nacka Forum" : "Slussen"),
+      scheduled:sched.toISOString(), expected:exp.toISOString(),
+      state: o.cancel ? "CANCELLED":"EXPECTED",
+      deviations: o.note ? [{message:"Hållplatsen är tillfälligt flyttad"}] : [] };
+  };
+  const busPayloads=CONFIG.buses.stops.map((s,si)=>{
+    const line=linjer[si%linjer.length];
+    const departures=fall.map((c,i)=>
+      mkDep(c.min+si*3, c.dly, 900000+si*100+i, line, {
+        outbound: i===0 || i===4,
+        shortTurn: i===2,
+        cancel: c.cancel,
+        note: i===1
+      }));
+    // En tur som redan visats vid hållplats 1 — ska filtreras bort här.
+    if(si>0) departures.push(mkDep(9+si*6, 0, 900000+1, linjer[0], {}));
+    return { departures, stop_deviations:[] };
+  });
+  return { routes, cams, ferries, busPayloads };
 }
 
 /* ==================================================================== *
  *  8. HUVUDLOOP                                                         *
  * ==================================================================== */
-let lastGood=null, lastError=null, knownCameras=[];
+let lastGood=null, lastError=null, knownCameras=[], busStops=[];
 
 function computeLegLengths(){
   for(const k in CONFIG.legs){
@@ -1056,6 +1473,7 @@ async function refresh(){
     routes=m.routes.map(readRoute);
     ferries=m.ferries;
     knownCameras=m.cams.map(readCamera).filter(c=>c.ok);
+    busStops=dedupeAcrossStops(CONFIG.buses.stops.map((s,i)=>readDepartures(s,m.busPayloads[i])));
   }else{
     try{ routes=(await fetchRoutes()).map(readRoute); }
     catch(e){ errs.push("restider: "+e.message); }
@@ -1067,9 +1485,17 @@ async function refresh(){
       try{ ferries=await fetchFerries(); }
       catch(e){ errs.push("färjor: "+e.message); }
     }
+    // Bussarna är en egen tjänst (SL) — faller de bort ska resten stå kvar.
+    const got=await Promise.all((CONFIG.buses.stops||[]).map(s=>
+      fetchStopDepartures(s).catch(e=>{ errs.push("buss "+s.name+": "+e.message); return null; })));
+    const ok=got.filter(Boolean);
+    if(ok.length) busStops=dedupeAcrossStops(ok);
   }
 
-  if(errs.length && !routes.length){ lastError=errs.join(" · "); updateStamp(); return; }
+  // Bara om ingenting alls gick igenom är det läge att ge upp rundan.
+  if(errs.length && !routes.length && !busStops.length){
+    lastError=errs.join(" · "); updateStamp(); return;
+  }
   lastError = errs.length ? errs.join(" · ") : null;
 
   legState={};
@@ -1091,14 +1517,17 @@ async function refresh(){
 
   const cams=scoreCameras(knownCameras,CONFIG.legs,legState,CONFIG.cameras);
 
-  // Zooma på pendlingskärnan, vidgat bara så att de visade kamerorna ryms.
-  // Att vidga för varje kö någonstans i länet drog ut utsnittet så mycket
-  // att kärnan blev en klump i mitten.
-  applyFit(computeFit(cams.map(c=>c.pt).filter(Boolean)));
-
-  drawSegments(routes); drawCameras(cams);
+  // Utsnittet: kamerorna alltid, och i "measured" även allt Trafikverket
+  // mäter — annars blev halva kartrutan tom.
+  if(!mapBroken){
+    const fitPts=cams.map(c=>c.pt).filter(Boolean);
+    if(CONFIG.map.fitMode==="measured")
+      for(const r of routes) for(const p of r.coords) fitPts.push(p);
+    applyFit(computeFit(fitPts));
+    drawSegments(routes); drawCameras(cams);
+  }
   renderBanner(); renderDestinations(); renderLegs();
-  renderCameras(cams);
+  renderBuses(busStops); renderCameras(cams);
 
   lastGood=new Date();
   updateStamp();
@@ -1155,7 +1584,16 @@ function showDebug(routes,cams){
 
 /* ---- start ---- */
 computeLegLengths();
-initMap();
+// Kartan får inte kunna fälla resten av tavlan. Går Leaflet inte att ladda
+// syns orsaken i kartrutan istället för att allt blir tomt.
+try{
+  if(typeof L==="undefined") throw new Error("Leaflet kunde inte laddas från cdnjs");
+  initMap();
+}catch(e){
+  mapBroken=true;
+  el("map").innerHTML=`<div class="maperr">Kartan kunde inte ritas<br><small>`+
+    esc(e.message)+`</small></div>`;
+}
 renderDestinations(); renderLegs();
 
 if(!MOCK && !apiKey){
