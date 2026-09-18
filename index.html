@@ -6,7 +6,7 @@
 <title>Tollare → Stockholm · Reseplanerare</title>
 <style>
   :root{
-    --bg:#000000; --panel:#11161f; --panel2:#0c1016; --line:#1e293b;
+    --bg:#000000; --line:#1e293b;
     --text:#e9eff7; --muted:#8497ad; --dim:#5b6b80;
     --ok:#33d17f; --warn:#f0b429; --bad:#ff7a3c; --crit:#ff4d5e; --accent:#4da3ff;
     --r:14px;
@@ -52,7 +52,7 @@
   /* Banderollen sitter i kartkolumnen, ovanför kartan, och är därmed
      exakt lika bred som den. */
   .banner{flex:0 0 auto;border-radius:var(--r);padding:9.7px 19.2px;
-    display:flex;align-items:center;gap:17.3px;background:var(--panel)}
+    display:flex;align-items:center;gap:17.3px}
   .banner>div:last-child{min-width:0}
   .banner .dot{width:1.35em;height:1.35em;border-radius:50%;flex:0 0 auto;
     box-shadow:0 0 0 .3em rgba(255,255,255,.05)}
@@ -77,7 +77,7 @@
      rakt över kameraraden istället för att hålla sig i sin ruta. */
   .col{display:flex;flex-direction:column;gap:8.6px;min-height:0;overflow:hidden}
 
-  .dest{background:var(--panel);border-radius:var(--r);
+  .dest{border-radius:var(--r);
     padding:9.2px 19.2px;display:flex;flex-direction:column;gap:4.9px;flex:0 0 auto}
   /* Korten får naturlig höjd. Tidigare tvingades de lika höga och klippte
      då bort sista rutten. Överbliven höjd hamnar i .spacer. */
@@ -114,6 +114,21 @@
   /* Omätt: tydliga diagonalstreck så att grått inte förväxlas med "fri väg" */
   .legbar b.nodata{color:#93a4b8;background-image:repeating-linear-gradient(45deg,
     rgba(255,255,255,.14) 0 4px,rgba(255,255,255,0) 4px 9px)}
+  /* Bilfärjan: ikon istället för ordet "färja" — ärver fältets textfärg. */
+  .legbar b .ferryicon{height:.95em;width:auto;fill:currentColor;display:block}
+  /* Två mätsträckor på samma väg efter varandra (Värmdöleden delas vid
+     Nacka) ska inte se ut som två olika vägar. Färgerna hålls isär —
+     det är hela poängen — men namnet skrivs en gång över hela stycket. */
+  /* gap:0 inne i stycket — springan hade annars hamnat rakt genom ordet.
+     Färgskiftet visar var delarna möts, vilket är sanningen: samma väg
+     som byter läge. */
+  .legbar .lgrp{position:relative;display:flex;gap:0;height:100%;min-width:3em}
+  .legbar .lgrp>b{min-width:0;padding:0}
+  .legbar .lgrp>i{position:absolute;left:0;right:0;top:0;bottom:0;font-style:normal;
+    display:flex;align-items:center;justify-content:center;pointer-events:none;
+    overflow:hidden;font-size:.92em;font-weight:700;color:#08111c;
+    letter-spacing:.01em;padding:0 .25em;white-space:nowrap}
+  .legbar .lgrp>i.nodata{color:#93a4b8}
 
   /* ---------- bussavgångar ---------- */
   .destwrap{display:flex;flex-direction:column;gap:7.6px;flex:0 0 auto}
@@ -166,17 +181,17 @@
   .busrow.cancelled .when{color:var(--crit)}
   .busmore{color:var(--dim);font-size:.95em;padding-top:1.1px}
 
-  #map{flex:1 1 auto;min-height:216px;border-radius:var(--r);background:var(--panel2)}
+  #map{flex:1 1 auto;min-height:216px;border-radius:var(--r)}
   /* Ortnamn när kartbild saknas */
   /* SVG-kartan */
   .mapsvg{display:block;width:100%;height:100%}
   .mapsvg text{pointer-events:none}
   text.placelbl{fill:#7b8ea6;font:500 11px/1 inherit;
-    paint-order:stroke;stroke:#0c1016;stroke-width:3px;stroke-linejoin:round}
+    paint-order:stroke;stroke:#000000;stroke-width:3px;stroke-linejoin:round}
   text.camnum{fill:#08111c;font:700 10px/1 inherit}
   text.mapattr{fill:#5b6b80;font:400 9px/1 inherit}
 
-  .panel{background:var(--panel);border-radius:var(--r);padding:9.2px 19.2px;
+  .panel{border-radius:var(--r);padding:9.2px 19.2px;
     display:flex;flex-direction:column;gap:4.9px;min-height:0;flex:0 1 auto;overflow:hidden}
   .panel h3{margin:0 0 2.2px;font-size:1.05em;font-weight:600;color:var(--muted);
     text-transform:uppercase;letter-spacing:.09em}
@@ -194,8 +209,7 @@
 
   .cams{flex:0 0 auto;height:205.2px;min-height:0;display:grid;
     grid-template-columns:repeat(6,1fr);gap:13.4px}
-  .cam{position:relative;margin:0;border-radius:var(--r);overflow:hidden;
-    background:var(--panel2)}
+  .cam{position:relative;margin:0;border-radius:var(--r);overflow:hidden}
   .cam img{width:100%;height:100%;object-fit:cover;display:block}
   .cam.dead img{display:none}
   .cam.dead::after{content:"bild saknas";position:absolute;inset:0;display:grid;
@@ -321,8 +335,13 @@ const CONFIG = {
        fel på kartan. */
     skeletonLegsOnly: true,
 
-    /* Text nere till höger i kartan. */
-    tileAttribution: "trafikdata Trafikverket",
+    /* Text nere till höger i kartan. OpenStreetMap-omnämnandet är ett krav
+       i ODbL-licensen för den inbakade kustlinjen. */
+    tileAttribution: "trafikdata Trafikverket · karta © OpenStreetMap",
+
+    /* Bakgrundskartan. coast:false släcker den, coastColor ändrar tonen. */
+    coast: true,
+    coastColor: "#22384d",
     /* Ortnamn för orientering när kartbild saknas.
        [lat, lon, namn, dx, dy] — dx/dy i pixlar puttar texten bort från
        vägarna och kamerasiffrorna. Håll listan kort. */
@@ -353,13 +372,17 @@ const CONFIG = {
      Leder utan include har ingen mätning (lokalgator) → visar normaltid.
   ------------------------------------------------------------------- */
   legs: {
+    /* Värmdöleden är två leder för att Trafikverket mäter Tollare–Nacka och
+       Nacka–Danvikstull var för sig, och för att Södra länken-rutterna bara
+       använder den första halvan. road ger dem samma namn i stapeln när de
+       ligger efter varandra — två färgfält, ett namn. */
     L222E: { name:"Värmdöleden 222 · Tollare–Nacka", short:"222", label:"Värmdöleden",
-      freeFlow:6, km:4,
+      freeFlow:6, km:4, road:"222V",
       include:/^222 V\b/,
       polyline:[[59.3200,18.2130],[59.3160,18.2050],[59.3130,18.1930],[59.3105,18.1800],[59.3095,18.1660]] },
 
-    L222W: { name:"Värmdöleden 222 · Nacka–Danvikstull", short:"222v", label:"Värmdöleden v",
-      freeFlow:6, km:4.5,
+    L222W: { name:"Värmdöleden 222 · Nacka–Danvikstull", short:"222v", label:"Värmdöleden",
+      freeFlow:6, km:4.5, road:"222V",
       include:/^222 V\b/,
       polyline:[[59.3095,18.1660],[59.3085,18.1500],[59.3085,18.1330],[59.3105,18.1180],[59.3140,18.1040]] },
 
@@ -470,7 +493,12 @@ const CONFIG = {
   ],
 
   /* Banderollen: hemmasträckan in mot stan. */
-  watch: { legs:["LSL","L222E","L222W"], label:"Södra länken från Värmdöhållet" },
+  watch: { legs:["LSL","L222E","L222W"], label:"Södra länken från Värmdöhållet",
+    /* "Står still" ska betyda står still. Rullar bilarna i 35 km/h är det
+       kö, inte stillastående — och en avstängd led rapporterar ingen
+       hastighet alls. Under denna gräns, eller ingen mätning kvar, är det
+       läget som kan vara en avstängning. */
+    stoppedKmh: 15 },
 
   /* --- Bussavgångar (SL) ---------------------------------------------
      SL Transport kräver INGEN nyckel och tillåter anrop från webbsidor.
@@ -611,7 +639,11 @@ function fractionNear(coords,path,tol){
 function readRoute(o){
   const name = pickField(o,["Name","RouteName","Description"]) || "okänd sträcka";
   const id   = String(pickField(o,["Id"]) ?? name);
-  const paths = parseWKT(pickField(o,["Geometry.WGS84"])).map(p=>thin(p,40));
+  // 12 m utglesning för det som ritas: Trafikverkets geometri följer vägen
+  // på någon meter, och glesar man mer skär färgen av kurvorna och hamnar
+  // synligt utanför vägnätet i bakgrunden. coords används bara för att
+  // matcha mot leder och får vara grövre.
+  const paths = parseWKT(pickField(o,["Geometry.WGS84"])).map(p=>thin(p,12));
   const coords = thin(paths.flat(), 30);
   const len = Number(pickField(o,["Length","Distance","RouteLength"]));
   const distance = Number.isFinite(len)&&len>0 ? len
@@ -1026,6 +1058,80 @@ function spreadPoints(points, minMeters){
   return out;
 }
 
+/* ==================================================================== *
+ *  BAKGRUNDSKARTA — inbakad i filen                                     *
+ *                                                                       *
+ *  Kustlinje, sjöar och vägnät (motorväg, riksväg, primär, sekundär)     *
+ *  från OpenStreetMap. Bitarna sys ihop till sammanhängande kedjor       *
+ *  först — annars förenklas de sönder till korta streck — sedan          *
+ *  Douglas-Peucker och kvantisering till ett rutnät.                     *
+ *                                                                       *
+ *  Noggrannheten är olika per lager med flit. Trafikverkets mätsträckor  *
+ *  ritas OVANPÅ vägnätet, och deras geometri följer vägen på 0–5 meter.  *
+ *  Var bakgrunden grövre lämnade färgen vägen synligt: 200 meters        *
+ *  förenkling blev 6 pixlar fel. Vägarna ligger därför på 11 meter,      *
+ *  kustlinjen — som inget ritas på — på 90.                              *
+ *                                                                       *
+ *  Kodningen är zigzag-varint i 64 HTML-säkra tecken med deltan mellan   *
+ *  punkterna: 1 868 linjer och 9 822 punkter på 35 kB istället för 500.  *
+ *                                                                       *
+ *  Ligger i filen med flit. Kartrutor från CARTO, OSM och Leaflet har    *
+ *  alla gått sönder i det här projektet — nyckelvattenmärke, 403 och     *
+ *  tom karta. Det här kan inte gå sönder.                                *
+ * ==================================================================== */
+const GEO_ALPHABET="0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz*~";
+const GEO_STEP=0.0002, GEO_LAT0=59, GEO_LON0=17;
+const COAST_ENC="ab3wpAKEQb2DHNC7*1 m*3kxEo1p3Lj1i12Eb25n1M78x1W13Id17LIp2H54X1BG7LKZ2Nd14p1DNTCGr1m1d12SC42l3Op17j3TG1X1963*1n1*25u1B33Z25k1h180w2Z1j2Z1m1l1m4r1W28W1d1q3GY1u17Hk1X2Vt1o5e1x5S~16l2FVM08z1GKMv1b1Mb1b1Ry1d14Ju1RCp1y4Mj3e1z23PT3Z1a18Pv1d1PW2h11Z1e1Du19X1Jg1R5v2s4BZ18b1NA9X1LI7e19NNe1Z1p4Z2p1Y1L6d1Ga1Y1VEt1BX28DVONFy1j1Cx2CE3g3C48b13s1e19AMX1*2k11m4bB8z18UNu3g2~4E0a1l49KCv3x1s2d1k47PUZ22h2k1l3Gr2p1Un1y2E~1a3Z57Pa1p16j1Bl2d1e2LAILAr1H09d5B7Fi18Z2f2i1Kn1i1L2PY2t14h2Ll2D7Sj29l3X1t3X1h11g3Pn3Bs1L6Az2GRF9Er2z1d466l1n1TI2Tp1b1t3g2~2t1n1i2NB5K2a5Fs2EM9OGa2FU0g2Sa1Ew2i1k1Gw1m4u4e1Bc2b4Hm2h1u12St1q34i1HFNe1Y1*6KSCl18O6q2B41a6Pl1AX17AJZ1Mb1JX28BIO2d1Z1d1Bl2f1r1b1k3715f3Ne2Db2La1Dj1Z11Bg1RL1*1Vo1Fs28w2B4A68o3HY25a84s18B7i2UP8f2O4Cd2OAA*3K5Sm1IZ1Gq19c18W2a184Y13c3PD8i2BELd1Cl1Br1DAPR7Y2L8h1w55i3x1s3Do2c1Z1Qx2C25W2f2a37w28k7B*3 ur3ytB6t4e1Y2Op3Dr1Ox13r1d1KLg1AZ3CW19b1c1v1Gh2i1v11X1Ij16r5JGGX476Dj2HW1Dt1VDn1k2Ry2t1w14Y1Dr1f10h1a1t2u4d2Y57u3X1k17y1EC9W2Ek3Fs4Uw1GPDMMQ0q1A1Gy1ANGO0MD7Is1KKMJ5W1k141NW1T0G2r1IN8jDEx2Sd23~1I2d1w8JSOq17m1Cs1By18IALAo2Tm2FW6AS3w2SVAW1a13i1p1BX1Il1Ed3DN2h36Z1Ud17b1Gt2X1o13F ar3qnAFi2Ce1P*1EIMBEd3KNNj2FM *c3YmBBv1BM0k1O9 od3skB6RFV1g1CI Yz2YeC1N9A1u1C32b1 is3meALa1MZ1 kx3gZBCn2Ts2G54W1Bi1c13En1G61b2Dg1DTRW1 mw3uaD7SMC2p1FC kc4aqDBEAq12X2 oY4YyAQT4j1LG7y1 q*3WyAG5Ct1RS0Y1 cW4wwASHRI wh4ctDm1k2Y2P2PNRn1D4NNX1R26e2 ar3geAAJGOk1n1b1c41e2Ga1Da28w1QCa1R5c1KC1OUl16e2G14Ug121u2A1An1Q82a1w1h13x1Gq1q1LCb1q1Z1Mr1SH1k1b2m34UOa1w1OEs1w1Z16a1W152g5q1OEg2*1Da1W13St1MIo1Nm1T8Td2Bw1T8RZ13g1DI*1g25W2P19QIo3y2q31Y3X1VLQMw198n1b20l1PLPM1LKTH13T~1s26f1p1AGv1E47z1k1c1q1d18p2E65X1Oj1Z4j1Fj1t1g1Rw19~1m1l2L7JOFZ1LMf15Di13r2DCBu11n15ANs2JM9o3Cc3X1o69C9PBs1Au19Y14c4Aq1T*25q2Kw15m6Io13k1FIAe1Nc21W2Ne1Ea23u1O5Ux88i3GSHa19i3MUb1W11e1u1QEZ27j1EDSW1K~1JX4D9Bk19p1Kx2MIEm1IVGz40z6W1X4Km1j1k3AY12Y6S65Z1g1m1QTy1p3Id2G93TW1j2IQ7q1j1q1De3Uq2i1R6h2SV9z2Kl8BZ24Z3LMKp1k3w1n1c1u1q5Hg1DZ2x1w13s1GA9o1UAb1e26a1Fi4Og1Kt1AK4X18Y3o1e32W1i14y1~58b2k1p1Ch2m2X3X1q1L*5f1Y1Je3S6e2n2Ir1q1QZ4m3p1W30q1Ek1c1X1BS8i1m1X1Ix16QO3Vw4Np1Ve1Gb19RZ12f1o10i1C6Lc3Y1h13Y2Am1DIEs1PW1Aq1Pc2OOZ1a18y1w1u2Y2q1e123w18Kw1GAOY19Un2Jc6NM0Y2ECCZ1Ia4c1a16g1G8IVY1C9c1M7W1s2c19s1c6Y3g3Kk1DY2Ea1c4w3v2DMg2i1a2Io3a1Sg13c1m1x1PFGCw1W2c3AY17W1 aq3ilAQf2Dz2Kv1 sq2uzECZ2Fl2Gc1A92f286Bg4A8u1x4W2d36h3IJKl31l5Mn28h4RZ17UTDUr2DZ3C14Z10pAJn1EH3Z1e1v44b2Hv2p17Dp1n3i7By1EW2OI7e1C1X1a2Kk1Pm3o1c1N4f1p1Nc1BLHa1C83QP2x1Y4t3a3r1k5X1e14s1k1BDy2j1o1Ha2j1u1d1e10PR80Y1b2u3By1e1NKW1v1w24o1X1W1GE1o1K78o1A9Sy16W2KGMh1j1*2GW1Bu1 cY4c*C1d1JRBIKe57W2RW26MMHQd3Ar2Dx1 k~3YwD1h1Fa1AM8D ib4yeEJc1Bm6MFUp3GH4~2FX1Jc11f29O8k1 Yc4*XEF3Ea1Bi2c1PAr13~1Ta1 id4eaEIEc1b24b2LB1LX1i1Iw1L02w1 uc4*yDK*2Ct1Lz19O ke4YvDM94r1D4By1 ue4*sDCB1n19*1 iY4mvCSm6E7m1a41q2HDGi2c10s1f36j1QZ13n1g1f1Uz3b184l1NHNv16RBTL*2JLPy1Cz2N1Dh2p1g6Fx4NG9u267 cZ4oZDM32TD09Y1 qp3YhCMB2LF27W1 om2ijCUf1Kb2K4Gz1IH3UOT6q1Lo18i2Ta6n2s35m1C5DQAGDKSW31s1BDFMG0BKAe19e1Uk2SK3c3Gy1E00UCJ7FCt2GSEL6d3W1~2v1j1p1a1Dw1Eh2F~2Y1n3MX10s1W2d1W14Go15e1Qb2K9AMAPDJKPDFSx2b1k1Dl1X2w25Pc1R2f1y1v1Oo1IRDe1IY1BY3o1VEr1Jn18HQA4c1i1c1QB6X18Y1a1F4TPf1BAX1p4B71SDb19O5F7b8Mx6N7CL5x1KTOf4Cy3I2AW2CF3NSL*1y1k28c1f1m1BMV4f1CQ8Fp1b4BHf1W1Hl1O12f2f1f32p1Tt23j2b2d6Hl4GUIy3MIKm3Gp2Dj2F0Gf3Dz3x1X21K7F3m1F09f1P*1c1~3Z1p5k1u5k2k3q1jAk1UUX15REF4s1Bm1e1NDc7KW3HY31y2h1m6Qi1UFSt2Y13W1t1Ib2Jb387c1w3Ah1Tv2u1X10j1C22W3MP1X2o1VIj2W17Y1n1Od27DAz1Sv1 un1kbE8f1Y1k5E02d3Ko3k1ULt2M04Z1Rb2Bp2h1Z3Hs11Z1r15Ge2N7j1Z2l3z1JX3k2Y2m2COc2EJS84Z3S05PG09d1EDLX2KU6Dh2p5a1c1q1a4Q6Hb1IBZ1l2s2e2Qm1G35l1N18RPTUA4Vj2b4Nd32x1GIEDGq2k1o3An1Pv1W2Qo1i2If13i5O81x1Ke1IB2QC3Db1Cd1KDEx1EG1Nq1z27z1G~2s1f53X2W1Tb1x1f1*14~1KD4Qg1f2U8Sl1g2r1r2g3Hq2Oy1e1X2s1L4f1Q4a1v3GW3K9El10Y1h2c5l1o12K5FFEb1w2r2q2FZ1Z1a15i1GKDc11a4h1s20a1f1s27o1TQJPL84Fp1f19Z1JG8e1a1G3o1La18W1E3Ka1Kh1Ia1c18a2h2KCBLO9W1t3E14j1QMRI4Y2c1X1Ap1a1x1KEm1~3g1d19l4e2Z2AX2c1h32t2a1j1Uh5c1v1W1b4Y1X12v1 gW4ssCDg1Ek11Y2KOg1h20v2Ml17z1l1IPm2 qk4yrCPC1QSb1 sy3cXEM~12Z2FDSf1Ap17l2Il1Bn2Id14r2EJDPK~1B~1PENk2PCZ1g2l1oA6e66QCJ3q1OIg1f1 **3gpDMU7OCIJ24m1c1i1k1j40d1ND4l1QZ16n2F6Z1r1F82~1Lc2Eo1La29m3 WZ4ygDI2Ax15r2RK9i2Gm1 yW4sYD7FHe28QKV1n1 mb4g~DAJ9VDi1E8 wc4g~D0f1D4DW2SP ub4awD5Y3MSEN9b1A~14a2W15IVLX13x1PEBo1J0 ef4eaCPz2b1g26a19i1g1DQj1 Yu3yZDHE3k1As1Cn3 qs3efDLg2I94~1 cq3iXDDG2W1Cl1 ir3YvCd1i5Iy1Md7 gp3yfD8o21X45m1 mv3stDGn2J5Kb1BHf1q1Na39LNIHy2K2Ef11s2C6QN6f1AG1b1G5Er1 mv3axDJK3q1IB6x1 mr3gvDBSK92P98 er3kyD4SAh1DG cp3yWEHc1GW1M0Ml17LQNAf2JL6Z2Bo1F3l1k31OM8 mp3ykDVa5g1~39Z1 so3cgD9H7m1IT go3ohDBW2C~1 km3sWDc1j2Bd2ET1TDB6N9y1RCAY2Jg2IY1 Yi3caERu1St1 ki3m~D0PZ1c2U56b1 uk3ixDPo1E6Ct1 *c3cdERA5MIOGt1 gf4mxDNa11SO9Cx196 gn4mvDNBt1a11W1FAESDSq190e1W11Op1Bz1J2Mb1 uk2ehDIQd2*26UM2Ol1s1KCl2LEBPW1FGr15RAd2r1k2DHFG2*1 gm2*ZDX1Y27g2UBOx10c1KPLHATJV se2erDX1EW1C2P ce2s~Dq1h2h107i2 sX2sxD8e1o1y14b1Lh1QD1Z1K0g1X3BG5d1h177Y2X2*1AY1 ca4epCRg3Y175X3 mm4WgEm1U3W1A8w1B5LC0Gt1j2j1Tg1X1L8k1 qj4ocE5y2Ne1CKUb34j1F3 *u4geEf1Z13X1F2Us2W1H as2WWDJFDOY17 id3wrA5v1PM9g1f1A2m5V28a3Cm17d1C2Aq1Be4AMHc1AW2A0Az1O3c1x52x4Fb4Md2 Ww1eYE7g3k14HTKt3d1e1 k*1oaESn197Eb1h2G5a2Y1W1GJ i~1*dESIQFPLRK au1unDBc1Y16Lh1 Wr1*uDg1c1SFDp1v182M us1cXEe1w17p1V5 gu1oaEE4TZ1GW1 ux2WbE7i7Z1c4CGOb1*1jAHP0t1BBFK7y1 ez2k~DBf1FU1n1B03W3Gg1M38d2 qz2ixD7R0q28t1 Wm3*xCNOM02N Wa3YuAAM8F9j17e1 ac2c*D3X2f1CBUw1O ga2o~DOA8HBTJc1 uc2YwDVG6QQf1 kZ2uYEOA8v1Vm1 iY2WWE0X1FIGG oz1qbEZ2i15GG8DIY1Iq1F4r1E18f1d1A wm3ysCEY16h1Pz2FY1Mc2 YZ2s*C7GEk2Ap1Ff1 ez3yZD7*1G62q1a19Uv6Dt3Qb1F55x1Ef4n1k21Y2DUHY54c4 sj1acE7e1IMD6o2y2i1i3Bv2f1b3Z2h2 io3i*D1h1SFy3b78f1a2d3Ez1VX3e1g3MVAh2Jd18Lb1u12h2TAUX6RC4y1DCDm25NBK7a4p1q3Ai1DE0NJHFY3RMh1q40s1X1s23W2I16MOp1 mb4ugDD26a1EL5F yZ3owCL6Gg16l1 uw2YvCJE4W1Gj1 qX2gYEl1Y15e1s1f2 **1gbEAOEZ199DM k*1ceEIR1RFu1 ue4oYB7TR4Iq2Iv1 sx1kb6C8x1W2Nk38SX1e2f2m1l1y1h1Pn2o3v2W1f1Bj4m2d4c1d4g4Z1TH~11l1M7Jz1W1f1 *g2ilDAKw1d26VN8n1i2 wj2WtDQX1PE827I Ym2iqDCDb1g1QR we2ywCE0Hd1Na2SR cn4uXEH31a1G64b1 io4ayD9MSW26x1BZ1BA Wq4icEHv2HND0p1k2e1o1*1D *j4qZE6OMJR3 ym1qk6W3Us2n15BO8s1h1a1t4a1h2w1Lb1O qa4YkD0W1EK6p1J0 Wa4glD4y1Ah1DF ce4wbDBe2ACId1Fh1 cSmg6a1g1Cm2GE1z1c1VIt3QW1GJKa12i1RE9e12g1NY3Ai2Ni1Y1*1OHJL8Tg1a1g5Lo1Ve1r2Os1IR2z1CHQm1i1FOIs1l3W2j2Tg2Va1 wX1ilCW1c2Ed1i2w50s2i1k62i2Aa1W1Q3Of1Aj1d1FOE*1W1Y11MN58e1s1M0s2EY1W3k3Mm2FEEe1DX15a2F28Q~1Z2DEGe3UY1Ic3k2q4W1QQVCq1k1Y2k1q4IAJf4 k*1uwDId1r1e1a10 cq3moCHl1Ps18OK12SEt1 wf3kbEO9OZ3VY1Fi2 aj3m*D6TLc1G7 yr3WrCDa24w1If37J Yg4orBBFFOMQ6X1 qc2cuDi3a1CR6UUj1N66VG2c1Z2g1MOb2PPJEZ1j1b3k34Iu1Z1DY14o1Z1Vp1GZ1k1 WZ4ygDZ1j1NW2i1k1G~1 mw4ydBFa10a1b1IBc1f1NBd2NJ8X1d2Y2FVT1i1r30b2Y1Lo2C6Y1U8m1*2Aq1 ym3ykA5u26t2 yk4uk9Gs1TY13l2I7 kn4Wq9Eu1p2o1Lc1Ef4OIs1N i~3*eA7X17K8i2GH7h1 mj4uy93UNO8h1K9 at1ys7X1EQR8E mu1Yc6C72Y1p1E6b1W11 W*3mrBBMAc3AX17v2 gu1os7LBo1BKKl14 oo1mv7SX25v4Ji1L7Fy46s1d1i2Ck2Ot3UT9HEB w~2eoBA20q29r2 Wk2*n8j5s17PGd19t1m2N2PQg1W19MI6W1CB3m1 yo3Wt6Ai1Nq23g2t1u23b1IJy1d7 sn3aY71OT5Z1W1n13Y2p1q16 Yu1*i9c2i2q173W2v1FGG8w1IC1SIU9a1Hj2t1z2X1x3 ak2mm8G44W1QR2Z1h113U ws2wgB6c1PK4Z1GL ib3k~Bg1UNOTX1CJ em4ytAg38l1Y2TVh1Id2c35t2I0g1Z2SI6N ah1cw8q1f1Mm1W2e1a1*2X27Pt1f2n17P yY2YpC9a2FCAZ2GB gu4gx6a1W5v2h1Ep2Sl1CG gg3sg97QKSAn1DP7M uX3cz95w1B12n3GI0e1 up1u~8M21q1J7Dl1DACRGK Wf3yqC5b1MDIr17b1i2X1f1y23HHCD*1NU gW3shC8h28U7s177 YY3obCAw19O0n2 sf3Y*83SLv1IH8m1 Ys4oZCU5l1UIN ca2mX80NB62p1Y1Z5q2Z1AMHc1T3DQa1a14Y19IZ1RJo19i3L62Z1 wd2ku7e1VEb1Q08Z1M15*39CBNJo2FDEx1p1Q7d1 sp1*~9Pt1HY1RFb1p2KBk1k14NC2Sk3 qo1*WBj1h1W15Eo1 cr3gX61k1RO6b1OV yx3*gCECLW1HJQN *p1cYB0Ne1W1g11X1Ql1V az1mqAr2t5M2IW2MIOa3 eq2wrC6Qp1i1Bc1AKJB6PZ1W17D6p1Sf1W270p18k1 sf4egC0e3Gh1Fx1 *a2wl6J7a1N0W1F0 qW2ws6c1Jb1K sr2otD3a3F3BNMBAx1 ap2otDI8Va29LOr1 aX2akDQPb1a3Cf2 mj3gmCUUPI3l1 eY2cmCX1K5HY1d16c1 Wu1yc9MMH*1Ld2IB yn3*f9d1g2e1f2 *X2ogACDMi1C5Lh1NK mr2krBm1b2Ti2H5 um4ebDe1e1Fo1D79n2 sX2wYAW2z14OLi1j15 gu2ucBASUJ~1w1Af1N9Q9Cf10c1 Wh3*eD8JG83ME5Nk1DP4N as4wpCs3j3Ox1W1DZ1KHs1Z2m2l2i1SD qu4YZCY1W1X1V so4gt8DAw1X1h1O uf2*rCTs1W1h17f16W1 et1kjA2k1TLCt1C14Y1 em1iq9Aa2P~2GS cp4kpCY2QX2P ym3*sAZ1x3KKGe3 en3WuB5Z2B70g2I2 eo3*qB0PMN4s2PZ1 ok1*aDBd2Kw17I8S7V m*1qx72q2Jv2I6 ml2WdB9QY1o1f1Uv1X1t1w1MX197Y2x2Y12IX1EEBM Y*2eaB3b6Ct22a79w1 ac2Wa75SCIEp1DJ5Q qt4Yw8Y1l2X1m2 so3uY7i1Ph1Q qw2*yD6F7m3H49VUZ2 ym4uvBAEX1GOT so3ed9Nu2Ot2 ok1imDESP1Dh2Qo1 gv3gXAGc1H9X2m4i1d4OZ1 wZ2on7w1f3On2 kc2yg7Md14x1Y195TSl2 mg2c~66m2I2 eh2WY7Tk11e1G6L*16u2Ug1e1v2ISCVD0GZ6DPN8 Yi2yW7Y1X11X1s1R6t1 *k2ay6QOMb2 cn2gy64~1RC cn2gy6Bi4Jm2NO5*1 el2yb7Lq2Vc15e3Ly16q2x1y1 Wh2gp7RNx1a1i1X3JPMHUh2d1Z1Vs1RRLc2B7Rm4p12 gi2Wh77m2GBKZ3RW1 *k2y*6Lm2I0Gx1BJ *f2umBFa1RET*32d1L5Kd15x1EZ1LA3f1h17n1Y19i1RCW1a2NB1y1L5GUB51SRh12y2F1Df1Eb1Bx1Ad1Vn13c2DVIv15n3X1f22V9D5Kd1l1Vb2c1c1IX1M4Eo2K1So2Q6c1s3e2x26i1KMq2LSp11r1 Yf2wgBSd2MX4C797Il199a1d2Hr1W1PGn2W1T6ONW3Ey1LW1u1m1f17VQLo1LCLk3 qg2kkBBNGx1 qg2kkBG6KV mg2YlBRw167 Wq2ok9x1*3c1~4Oj1o1h1 uw2egB4n1Mc15IO74u1t2i4CZ2K98p3 *f4at9a3v16GZ1q1R5f1s1T03b2Y1C ib3om82W2LE9d1Ub1 s~1sn8I9F82HSa1Y1f2w2DOFCf1Q7e1e19Y3Z1DHY1x20d4g2Cj2IB ei2oeAs1RHy1 ei2yhA8s1PO2W1p1*25c1h1Y1Jg20Y2Sk18y1LSNp1Nk1A*1b1*11H7QP4c1l3Kl5PF7f1q1IFX2c176J6h1FHKv1HHw1d1Bu1AEVg12Q*1d2Sz2Fl1e1v10p1 yt1oh75n1K9JPEh3l1p6 qs1y*6E49~1Qa14x2IDW146c1W1k1 yu1YW77CMe1PE2K yv1yg76k3Ec1IB Yx1al7ASFq1W1o23a3q1s15Q cz1wv7Jg1Bj16d1Vp15b3d1f30h1JT kv1ei7NC8f2CE4m1 ab4ok82f14g1c1Qg3h1KOAo1x4Eh1T6X1E5 mm4ce89QZ2ADOb19a1b1HFGz1e1S1c1w10 yv1WdAa1B8r1Q8e1t1 sW2wiA0x1V89v1j1P0J~1CKZ1NBx1e11X1 g*1qZA6m1O7Di1g1S2k2w1INCEk1LO1Y17T gz1kZA7b2HNMn1Mc1e1RGZ15h1q1d1a1~2e2j39m1p1y29*1f1o1n2s6 wf2cXA5Y27j1L6VX2Z1c1Op39j1ODIe1BSM62ONQ4GO72b1Im1E0 us4s*9e2Cw1X2c2Y4c1GI9Ct1b1h2KNe1OKy19*2Ao1IG3IW1A2m2OW1i15e1QSg4Ru1RDDf1Z1Bd1f4JEDj1t3PNp3r1i1h15n1s14LB9CLl1d46d1G5 oe3ueC8c1QQDe1JB0x2 kt4mk7u2g2a2*3 wx4as7VN6TBLd2l2Pl13d1 up4gt7*3Ao17c1d1i10 mq4Yk7n2I1o1l2i2u3i2X1o1KOHC6W1k1f1 Wt4ck7BMFPp10 sq4aj74Pc2y1 qo4wn62o1Ro1b16Aa1Bg1V87RHw1n1HDh1RMBFPUN*1F*3Kk13QHUn2Y1o1g35g3a1HW1a1s2d16KBACOg1Y1W1d1k23Md2g1V8UBY1E*2CC2s1 ww4ae6HU2SDC1P0Sj1m2DLp1E7UY1a3HI5a1N7Lw1X1FFl1 wm4s~5OX1m1a2UBGZ1 mq4e~55d3ARa14Y3o2c4h2d3u4Le2PKe1k1 uW5eZ5F05X1z10F~1VEh2*5MW13SX13b2k4H87R0m1Vo10j3LTT40Z2LS9Y3Tk1EUc1NKi1G17e1Y11Cc1QHSi1Y1FEX1e1k1u1f11k1U6Hq3h18t2s23y1~1x1v1BFh1e1IOHn2Z2~1q14z1u1b2Vx1FW2RQJDGv2VCRe2NREQBY1Z1W1KCAi1K26c1c1Z1Ka1Lg4Ow2 sj2gs5Qd2a1Fk1r20z1MDe1Z45X1CX1DZ1QLSp2Sh4a1z1Q23X1W1l1Kb25HCZ1RVi2d3KEDZ1W1HEv2GN2j2IT kf2mw5k1Pw2h3 YZ2Wz5i1b16IDQSOq1b1Ux1w1B Y~1iZ6QRCx1s2r24T e~1qZ6x1*1R2 sj2mu5LO9k1H65u1f3Iv2k2j19DI4VB41LTe10g1j3u2 cj2c*5Bf1e1Z24f1FT gk2iz54To10 mq2Ys59TF2n2o4 mt2iz5Pf4v1~1 ut2uZ6W1h22x3f12 qr2ej6I~21j2 gr2ak6LeBr1q3 un2Wc74UOT6Sh1w6 Wm2qp77VW1z1Jr1Y1d1 mm2iy72d4H52d1JEDRW1p2 Yn2kf85j5HH1V8X6 uw2us8r1FDh16t1Bl1z1n2t36Nq2j1W11l1TNe1b16z1 mz2WW9Hh3RZ17z1X1v2 w*2we94p2DF eW3qh9D83RE1PP oW3ao9BZ2Ij1JX24R uX3op9Db13g25j1J96P oY3sp9HY10w19t2 aZ3oy9Gb2X1r6 wX3eYAQb31j1IX1 s*2wmADVMX9g1x4c1UCH aY3yYAX1q2r1o6Js4 aa3saAJ~3N6JW2 ac3yjA3d1b1M ag3wWAh1w6v1w1 qj3al9Op1m1H Wh3ip94r2Nf1Av1Aw1 ue3Ws9k18Qx2 iY3*j98k1MCk2y3y1EIg2 se3gv89Bh1e2Dy1 *h3ul8f1ONY3 km3*X882VY2HW3 iW4sj7h1QTPR8v1Y3PBj1W35q1FLPe2LB9y1X1ETg3T7d1W13W2Lw1b1g1 Yp4Wu7b1Y2n234Hn1X2NIv2N7j2n1a1LJMH2b1l1n2l3Z1X1b1Z2R qW6aa7m1o1LW2JCr1h2RCDY1a1u1j1HLOz2i7EMe1Ps1Aa1W2h3KFg1Vh15w2HDNKm2o3G1s1Y5x14p1X1Nh1L4r1g3p1It1y20e6Pe17PJ41d1Ol1FD2JMr1Pb1c1R4Vr1K1Z1Ml1Vi17VPO9d1z1p1X2s1d33n1o2Rc4Je1n1OVs1Fj1Sp10v1DFFl3JDX1~2X5b2NH3X1PVZ1a1NZ1VIl2r1 go4oX6Nq3Ii1Qt1LZ1e1j2BD cf3uZAe1Z70Z2j1d3X1S1TH1n1q45c23*1G6BKC9MW1Lw38*4c2p2Qt3 oa3qaAEn3DZ16x1DTDi4CY3A2 aZ3yz93e2QK5b3FA ib3et9Or1f1v1 wZ3kt9MKSP Ya3io9H2Hc1Sw3 ac3ov94LRHJw1 sW3ac9Aa2CP5h2FY1 cY3gX9JB1W2QH3X1 qW3cv897Bs1SM5Z2 w~2mY9Cy2I0Ej7Vj2b1S9g18Y19k1c1g2 qw2wo86W2e1c16u2Ow1g1UEn1E4GZ3D53r1h1v2JLHm1BJ6p1b11B85w1 wa3ut8b17l1e30W3S*4 WZ3gZ9OGMv3 ka3o~8OVOn3u1z3 sd3qs8j1k1H7 wY3mu8Gj1BLLo1II Wo3mw7b1w2Y13W1d3RI wk3cY8J8GRB95a2a198Z1L8 sb3Wt8c1n18f3k2d1BJEt1*1n3LBm1j1Oz23h3c1h5JRNq1L30LBW1H7JZ5Th1v1IZ1u3T64l1t1W3X1Bf1m1b12CA7y1d183W3Tg4FE3t2Nl1CX1Bp1El3SW1Ox3Fb2Cf3Dn15UP8Nc48C95RY2DY2DeCk1Y2i1~1AUBw2EAQe22q1K6Qs2C2Iv1i3u1Aa1 y~2kZ7JK8e2Cx2 ok4eg6Ns2Ao1u1h3 ui4ql6C8Gf1D9Di1 gn3gp7AX1*1CEj1ICc1t1e1BOZ20d2u1b1 oj3ij6p1s14Ib11Z2*1Js1X3c3Fo2KKGY2Z1w3Ie3B3DZ2Sn6DPX1a17LHc4Z1i2Z1g5Te2FL6a1BO9m3Rk2Cm2k2s6u1Ao1x14b1O7AZ19D4Vy2AUZ2s1k2W1t1u3W3KJi1E4N Ym3sg6n1q2T2 ob4wt5Z1s25Z2Jg1J85u1PI2MRc1FBLc1HZ12a1n1*3NGVX1X22Z1o2N53Nl1Cb2c3b16FS8ORc1HPJg1RB gc4o~5RAPV7h1i1l25b3 aa4gm6W1B0j2SLAe1Pq1e1o1Y1v1C8MX2QB5TQX1Kz4RMBX2b1Qh1k31q1Lc1j17*1z28l2r1Z1EZ1Y1D *Z4qn6LBTOBz1M0Eh10MY1U mW4ga7Iv2OHKj3IBQf3 c~3oc7W1ADf1 Y*3iY7D5Lw1Oc2 Yy3cz6OV2p2MH8n1ULOr1W193u1n1y30i6 *t3iY7l1a4PQHr1AX19VZ1Nd20e35o1W1u1d3Sr3y1FY1W1 ww3cc7EV1b2 mv3yf7W156h1D7 aa4eo66c1k1DFx1Z1a1 *f4qj7SSAL9RRM gc4wg7Cs1E11r1N2 aa4yj7x2H1p2Y1B2s1ISUVAW2 oe2Yx5VE7a1Y1D6Z1 mp2yX7Ea1Ix27JB8Ba2 qs2kj8AW1GLFb19S yr2up6Z1q9Ms2Qf28EMNe1Z6Bd1a1x2If4W1X31r3r1u2Hg3F10v196d1*3JA4W3 ig3ui5DBGb1BX1n1PVA5b1D8AA5g1Rs1Kq19UV9b1p13z1BY2D50N9I6Y1X1BTe27i1Qw27s2ICa1f2Y24Y3n20Z1s1n11t1EJ se4c*5UW13i1CMJo186 ie4qq573Ju2Ju48g2o13 ki4is5t1Ad1p1 kh4sw5I59~2CD wh4uy5T50f1GB uj4oz5CZ1FZ2Z1SLo1 mf4WZ6g2MKf2W116T se3wb6f1F1X2z1X3b2Hd2Ud1q19e2t1ENY3F8Bm2L2b1k3Z1c9n1i4Bc3Pm2H4Ce1d1k45a3a1W3r1W4i1TDa1BDn1g18W1H47b1DK*1q1Cw1FW5Lg22y4Ba3w2q3Mv14m2Y1c2 sj3eW6V03X2R20f1D2j1y2Ho20i2HW1 if4ml5f1f1Lu1Z16Ti1X17Mz2IJv1z1U~13Td1v2Z1M5d1l1F2Rk1PPj1MZ1f1At1Y3J80RNS0L~3w4b1c4X1CJm1u161a1PQ4k1h22d2c20g1T2AIDk1X1E2UN25Y1B2VW5N21U Yb4er5o1v2EX2g2R ij3ce6Ue1KLMa1o3~5S8e2z2C66p1I7UW1o2r2o3n1y1X2U~1OEIVK8u1f29JCA uj3*a65c28SD6 of3ef6Q8ALy1S6l19l1g1t1 sc3Wl6KJg1h4UN ot2ei88v1U6Gb1Kx2LZ1N4Pc23r1o1X1W2j4g1ZAVd20Z1PW1JVg1z6P8Da2BVBE9P8d3W2l2Oz1Y1He3l88~1i3t48p27~2AJRNm1n3BLY3APg4 es4ot5IOOLf11 eo2Yd89P7a1Ok15t1 ye3iWDs2h28QI19U~1m1~1g32d1Y1R4X1V4 gn2mkBVh1g1b1c1b3QW35w2FGBLRe20h1 *p3ar96d2SQLk3 eq3ct9JLAh1 au1sf5UK5KGOHBLq10MK5Ao2HQ3RF01k1D2Cg1G0j1q42Up1i2B20VK90l1RY1H76a1b1s1z1BY1VAt1ID7T*1l38l1Hh18RKPW1SS~11J9QDX15l3O44r1SM6Y1 ar1Wr5BDBQ2s1OZ11T gl2o~8Cr1Bf1Z1e36GGD0m2Ev2 Wu1kyBY1t1G6 yw1cwBBHZ1CX2u1 ct1WuBZ15QK ut1atBo13Nw1RV Yv1YyC8HPL1z1 ku1yuC8b12QSBMa3 yv1WiCG14SKDQY2c1LTo15NR15f1b100f1 ua2*cC6W1E41W15QJ29m2KW1Sd1 ua2*cCc1u17m3 Wk4*w8GIX2U3W1l1H8p1u10a1X12O uy1cqCm1LTe1z1MAF iz2grD3W2Dl1IF ie4sk9N4X1q1Hq3d2q1d1c2p1ARu1J1Ab1l1Et1s4v1q14w3d1d24d3I4q1j3W2h2a2TMx1g2f1i2x3Cv2I22RW1b1c2Z14KX1k3 yl1ikA1IJHb1e1997W1TPk1z12X1 kn1uk82N8O7Y1Um36y4B99f2H03~1LBHZ3f1j3w1Y3UT cl1kYAAk1BE0LD12d1E4 Yy1oj8r1a1s1d1 Wz1af7Kh11b1EX17N oy1kb7Fy1Uw1 Yy1gu6DY1H03n1D15k1 sZ2ev67HPSF7Jc1F7 ea2oq6DOL9Dq2l1m1 ea2oq6S3Kg1 ob2ss6V25W1 yw2abBa1Gd1CBq21j1N9g1t1 W~2kdBFy48i2J46q3Bk11r5EDFB2X5 yz2geB4p3CA4LIOEl24m1Ji3 Wc3YrDEY35W4 wb3uxD5HGX1BT4l1 ya3gWA2a3La1 ec3agA9z4Mv3LVBACLF3 ga3qjAOHAf1KCET on2kyDCr1a1N9QM09I6SHW14f17F89NO4MC7b1g2 eY3ypD3W2ICX1EHd1NQ*1h2 ez2kkDFn16h19h1 s~2ujDPa3LQCX4O6W1x2 ip2eeEW1g25W1J1Pe1 ik3qn8BK9h1A7CW1 cZ3kWA3d2CT wX3eYAQb31j1IX1 WZ4ssB8Cr1W3 yW4gyB7NIt2 yt3miD6QHa28O us3YnD5FSx1Cb2 Wt2wcC3a2F3K~1 ot2ihCRe2n1q1H9Ed18SCZ1U7Et1HUAr1IHW1G3a1JB *c2iq56g1N84k1Fp1Uh1 *Y2a*BMc1Oq6Hl1D46l1HZ1Bx2AT oo3iaAy2l53Z1OFCw1Pq11W2Df1BM7a3SQ1OBJJc1BX2TK Wp3ybAd2e2Do1Hf1Z1KEn1VTMJIA5W1G07Va109RW1j11*1M9 kj3iqBNv25K7PHEe1j2Gm16c3 qj3YqB6o2BZ2 wr4w~84s2UQEo2i1u3g10k1q1Qy2n26TQRBg2LMn1f1~1Rm17X2f4b7t7q3En1G74x1s1E*1l1S4CB0T70CFi1QW2T kl2wbCOp16w1Vq2EUJ5Lq1H4IZ29f1e1F0h1 *g3ueCY1Z1Fm2Hh1 qe2unCVu3C0Iv2C7EW2H9Rm1L7Nm18d297CRHx12j1POHNU1GZ17p2Mg3*1X1X1q1Um1 uc2elAZ2T2g1Qq1An1W1SKNLH Yv1*h6Sb4a1h2w1Lb1O Yy1sb6t1s1Ru3 e~1qZ6x1*1R2";
+const ROAD_BIG_ENC="on9isL2Dz2b7h1j4Pd4b1Z9X1t3Dl2RhC0t2At42l25h2Fv41l8Bn3J~2PX2t1j2Lf1j1r3l2r4n1Z4VX2j1d2t5r7h2~3Tj2j1f2Vd2DJB3P8x1b1R5Z4u2j1k1Pk1n1y3~1a5X2c6j4sATy1n2w3X3c6Jg1Z1k3Ta2Vm1X4y4t4c5X1Kp2EVOp1i2d2*1p2e4 uq7iiJQX2Y3b6e2f3Y1v1q4bB*1x5m3v8Y1x1g1j1e3v1Y17a1Ag2q1i16k17k3~1q3h1e1Ty2~2i1Lm17y14g1Ce1Io1a1q2i2y1Uu16e3Jy1A YZ9gvHv21l1Gd1Uf2k2d1UZ4q1z2u1b18n17X2l1VBl16p1U uk7msJY3t3Y1n1UZ2Ur2 cn5obIRl3Nx1FPj2h3n2t1f1h1X1Z2j3r8Vl1t2x2HX1Jx1Bh20x1Cl41j1B~1b4jBFX1b1p1~1l1Rn1FX2Vj7Fl2Lt1~2X6v1x6Nt1d1r1TPt2p1f1h1Vr1Rd2Ff27b2FzBJt61d24x45X2n2zC5x24d47l27d1X1f3t1t6Jz1Nf1HJp2r1Z1f1VX2d1d4Pf1LL~1Nn1BR4RGX2*1n1Ur1Sx1KX12d17h1P~1t1d1BN2VEz1y1 **4yaHGo2Mw1Y1u1a2c2W1w1u2q7SW2MW1OMi2a1Y1Uk2m3W1e2u3YGGW36g35eF8c2Og3Ek1y3y5Ki1Ig2Ma48OCKQ8E5CFCJs1h4GVMVy3n3s2h3IBM2MIY1w1e1m3CQCEe1QW1CY23o1Iw1AG3m1VE2GECS4a1TW50m14a1Ec1o1i2w1k4GIM6G7CDk1t2Y2l3e2z1y1n2QFq2DOBW6p6 er4WbGEY3Gq1Qi1W2m1Y1o1Ue2w3eAAo12e10k1Bq34i2 **7ucKW1BO8w2u1g1i1Sk1a1q2g1m4k2Y6EKKIw1IOIk1u1Ok1Ek1Sq4Ci1a3c86OAi18W28m58k3W1Y5Eg1Og1UY1g2o1SW1g2a3i2y3g2s2o2g4m2q2UKe1G*4Qm13w1Lc17 ep8aeLX1z2Bf1Tv4Jr1Ph1Vf1TJz1NRTl2b6f1l4Fb1b1j2h1r1Z3x1T5L6Z2k1x3CP8POn1k2PON1f1Dt16f2l1 oq7siKI3MFy1v2IHu4J*1f1 qi7cvJCs20o3EY52Y23m26W2 mi7quJ4I Wl7ygKe2k1s13q1G ar6cXKJIJa1Ta4Rk59u1Bc1Na1VMj1k1L*10C6Q1EJKb1e2Ta1p2o1~8k4p1c1v1e2r3e2d7q3v2W1p3Y1v4q2n4k1j10X3PX1ANOj1c2HY1Fu19Y3B*19QFUb1e1j1O~2Kf3s1TUh1W2PW1Z1SREX14T9l2Z2X1Dt3Cb2Kb1QZ1a1Z2y2j2q3r1a2p3m3p2*1X1Er1Ah44j2Lf3l1p15Z2Kz2g2PEb18l15f1TTd1~2d7h1n2v1p2 at6sXK*1a3 mi6srJHX1V~2d1Z2FFF5H2DAp2k3r3i3Vg1DSv1q4t1s1BKv1q4Ri27e15o18y31kOC*3Ei2W2w6e1u4W1Y2o2y2CW14k15g22a1Ua4C*5Mm42w1Bs30o2Y2mDGg48e40Y25g2Tc47*15w78c5Og6As7Us9Ay1Ci1W2m4SY4Ei1q1m3Sg2Mo2Em20Y35w1BW2Jy1r1e3Lc2 aX9wYGf3y2Z4g5X1Y1f1W1l1Qv5W2X4w2f1Mp8y2b1SPQNY1Vq1Vo2b1w3l1q4Fa3Fw8T*6Dq1h1g4v1k8Hw1Z1i29m10U4SKk1MKk2q1W1W1KUMu1Sg3 Wh8ipGY5h3u5~1e2f1y1t1*3X5q4b4e2x2m1n2e1r2W1v2g1f4i3XCKj3Ez3O~2Y1f2k3f5 cq8wdIi2a4c6i8Qe1c1m2m1W4o2q4m1u3Ok1m1Y2Ia1Ek1Gq2Aw24q22o6Kg60u29q41u2UYDGq2W1u3c1Y9Qg4Y1m3g2q5Qc21I64 yo8saIIY1OY2 gj8eWIo3Y2W2i2 sf6YxKo1X1IRe1f2KJ0D5b1Mv1s1r1SHMX1Ab1Eh2Ox4a1l4OVQDO0OK cc5YkLo3X2W7h2u6b3k4v2q1X2i1Z1Y7h3s3~1 ky4eyM~2m5Rg1Tc1 qj6qsJZ1T ek3iiC1X20d2Ir4a1n5Ud6g1X7c1b7g1p5EZ3 e*6koLZ1SPALH9X12x2OZ75n42X3W1b70x3Pb6Pr2Dn3x1l4j1X2BZ13n12VOZ34X10b15VFX1NDD4X1SH6x15v1LZ24Z1H kl3m~BTs4Bw30s38Y4 uk3aoCc1Pa13g2Ko1SSk1g1e4Qy1g1o1a2e1MKSg1Gc1Y2*7W1e3Ae18k23e44y2q2yC6a23y42g2Ku6GyB8e2Cq1Cm1Kk1g1a2k1g1*2u1Y1c1Uu1Ku1m1*5Mm1i2q4Ks1Gm2MY5 mk3okC7b2 cX6u~L1n25X19PFLj1X1DHNd1DVZ1p4~1v6Fb35n20xN9b44v1Al1Kr1y1X4Kp1CJY1VKb1 ya6wgODh37j41b22~20b4AZ2Uj46x10v25h3Df4Z2zD0r2Ab30t13r1Jl3BX6N~25j14v3 so9grEr2c4Li1Hs1Hk2JW5Je3d4qEX1c3h1Y3l1o2v1i2v1u1 e*5kyJJOB8J5DFBVTl4Hv1DRj3d5FX19Z1Pp35r16zE5v3Fz2z2nC Yb6miO5r1 ef9mzH~2t2p1Rn1H eb6qmO5Z4 qa9umMX1p1v1X2p2b4f2Z3TVr2z1Z1t1Lz1Tx45z17t67~1FZ2~1f5 cs9otMb19T0p2QZ14f5PR9b1Lt1t1j1x1Z1~1 ca5m*L4Y11a1Jw21q1Aw1a1m28a14m19o1d1g3Ny2Ng2PW2Tw1VW1~1CHAHK ga5w*L5X1 sl3soMs2d2q2r2i1t1Y4z5W1Z1c1VW1Dw1Hi29g10a1Gk2Y2m18c1Du1j1w1n2STg3p1g3Nc1LW1VMb1Ip1Cz3Gx1IZ1W2v2e1Dg3SW10c4d1a1H kl3yoM85 ew4WWNLW19Q5a12g1AY1*2Y8Ck14o10i15g1Te35c13s12m1 kb5ugMBh1Z1l27j10x1Kz20v1 gt6ayJ9i13c12W2Gs1Y1q1 g*5aZNSHi1D qz5WaNMR gs5ceOAr16x18nD2h16d1Gn1s2l6g2v6Qn1 qs5ubOBi2 *n9*tLIc3M*5Og4 *y6opLe1T mx6ejKIs14a1Aa42o33Y4HW47m30SCm22o1Nk61s24a1CSGCM5 kj7cfK4x35n27z20p35l1 k*5yYNZ1i1He1p2m7h2w5Dg19k27aD3Y2 WX6*yL2q13a26u1 sk7ugKA4 kj7kfK07 ei7utJ8S qj7WhK5n1 u*6WoLFE yt6sYK59 ku7upIl1v1l2p1HHBL7N5t1Cn1W1d2Kv1w1j8k1l4Ev1Ur7Iv8It2a1b3y1v5a1f2g1t1a1X1c1Lk8t2 *z6idKa1b2 aa5c*L2A my4gqN8b16p10l13d1Bn1z2z75h16l1Cb1w2X5ULk13K9QNOf1Y1n2c1r3o1f4E~11p1 ej6czPGX28n21n29h2Hd2Hp1h2h5Pp3Hx1h1~2LX2Fz2L~77d4 Wu4WaNy1v2 mX3YpCY1Iq1k1W1KSCe14y1Fe2X1*1d1i1d1 c*6ocKl1u2HCN5JPt1f4Z1r1 W~6abKPk1 Wr9ifMRf3Jd3FX3Hf5Dn2Dl1 ox4ywN1h12n18n1MX2 kv7gsIDj1HZ1 k~5obRLi40a24u16i1Eu1a1y2Em1W1W5 qw7axIb1v4 YY6ewRX1f5j1~3Dt19n20r2Ox4GX78X2Ct1Gt1Ij1a2z3g1f4Y1X2 wg6oYQKh1c1b2Kv1 qt6YYKDFPHN0F6 u~5gXR3o25s1 gZ6aqQn1w2Vw2Lk39a4 ig6aaQEn1 cc6qiQX1a2Vi3PW2 u~5cYNf1M mi7ktJ56 ew6udKOi28w18g1 uo9s*HT9d13~2If10h1Bp1T YX3WpCE2 wz6udK4B wq3YYBBW2b1e5b1a7h1a7Pq5Dg2 on9wrL32 ez2grC*1v1W1DS1 ok3klC1R gY3ooMY3k1y2Gc21k29m1HY1L yW6yxL4Y1 a~6WoLB0 ku6eZKPb1 kn9gsLGq1 WW3YoMa12c1E wi7ctJ98 yr5ofOEh1 mz2yoMa1Hi17 qt4iaNCB ow4s~M9A oW6WYNP6";
+const ROAD_MID_ENC="Yc9cvHCr2w1j8En26Z33r64n4En4Y1t66v12d25r47j3Df3Nl3Jd2Hh1VLV71628E9UE884KGAEc1Ke2Iy2Eg3Ak44a45a3X1c7Dq45o44s65a3Bo2x1i8Bc23A7i29K2A424957 ct6stIf2m1f3*3HAJy34s1Dy40i1E*23g3P*49m1 *k7sgKN3PCd1y1Z3g3z1Ov3W2 ki7kiKKTIJI7G4 qb9WyHAn247 km9k*Oe1z183Id2Y1b6Ep5 ih9*lP430NCX2Gh41v14D35384i10W1Fc4Fs228 wl9Y~Od2q2Pc1282313 *~8cYM9Gf1OHMBKJy1 aW9eYM17362841Ij1JY1 yY7ewLCs3Cu14Y11O5U9MB60A6117 oZ7mYM6V0b1Fn25h27r1Rf2b2t47BB7 iZ6aqLIZ18R6x2Gb2CFC7 mu3qZGz2r3LX1R9d1VZ1997X1r1NTh1p2n1t1Rj2BHj1Dp18j1P7B9I89A4 wv3ccGf1n2 qc3snF0H1G cz3cWH8O2o1Lc41k14SUw2Ki2Y2a6a1e4q1a77x1Dj1 gm6kmJ4T4f3Dz21X1GZ53x1KX3894Dk3Z4Y5X3o1HC8a1k1E2EBEJIb1c1r5CNCBs1RG0m2W1I1GDOZ1Ih1Ch1KZ4Gl1GLO9W1AOMMi1 ec3coFLc1Fs1DA qg4unIa3Y5e1Y3k1y2k1c3c1a1o1QKMMc1Ee1Ea2Ky1Gc3Sq2Mk2Mm1a2u3Y3W3EAM4MBo1v1e3X3O5KCk1Y2m2k2y1o3AQ6a10W42k16OSu1i1a4Mk1Y1o160EDC6 it4meJHj1Fj2Jj1Vj1x1VX1Z1X1p2f1l2z1h4x3b6p1z1c1m1m1e2 qt4agJ7p1 aa6YoL9a1LW1F0LV97F67I7c13m1Cm5 mz3uyC40TZ117327m22o22f34d16B mf6mdQSh3 aZ7gZMEP c~6eoLIQa2e4Oy18Y1 oy3uxCUW1 Yd7WnKY2Rg3r3 mg5iuJp1l1n1b2PBF6n3i3f1m1PAR9X3~2b2t3FX1Np2Tt2BX2 Wp5mjKD3DE71b1z1BNb1t3X1b25J3~12b37v1b2b4RT gd6ehQe1p1UZ2 yp4qWJ75BC YX6ipLA9C2Ue1M7 Yn9esL9E3F315G63AAAF83 qn9esLKF6B go9grL3CHA *y8ecMARA90733 *Z6*oLAd1 Yb6kiL5GJa23W3 go9WrLB6C2 q~8wYMCB wW6gwL5f44l1AZ1 km9esL28 mm9msL43 gm9qsLf3W4~1m1X1Gb17PRDN3Df1X1b15TETc1f1q21KTW3 sb7wnKi1P ap3mjDPM kl6erJSv4 i*6koLG9A4 in6mzI17 Wn6szI68 *x6urIF5l1Gt2q1 Yy3WiG8Y14m15YE8u1Mw1 un9cyOHY1HQ721644 oz6odKX1*1Hg1BI ix6shKA5Y1t1QH8j1 el6ksJ6b1 wy8ucM4F Ye3*xDIx2Kh2c1v2Up1a1h1i1X1c1Fc2HY1H gy3mWD5m1Hm1X1a2X1o1720A6009 ox3qZDKp16l1 ad3efF2e15e41Q9o1 k~8WZM65 uZ6giS25131822 uZ6qiS3W3411n1 qd9axF36 ud9uxF47 Yd7cjIJSJAH1n2TL4Z1MDEDSX1a5Ba1FUHGD0Z1j1 ud3Y~DDaAJs23y10c18q2Cy98*23y1Bi20m36a3 kt3*eDr1QHGNSHa1 kp3WjD9G cv3gdDBIC9 Ye3*xD9a3 kp3WjDEN qi9qZPBq2 yY6wzR8u17X22F35320C60 yZ6geS2t3P~4 ux6aqKSh1IDe2a2M4W1FOG wx6ipK76 qW7YqKHAL3b2Z2B6VY1 ed9mwLGM Wd9WwL8G qY6gyR2I gd9gwL16 id9swL23 uz8kaMKRY1H cY6uwR3F aY6qwRGs1 uZ6klS30 uX9qzL434N qX9*zL49 ke7ydID*2Dg1FY1 *m6q*I4L sX9mzL24 yX9izL13 ih7mZIX11D8BEJs1DY2 wi7cbILX1NJ ga4caIs1k6Kk1g1*1 Yc9yuH31 yb9cvH42 mh9qlP31 ei9ocP40 om9g*O17 YX6gyL7~1 wZ6ofS2d1 wZ6ufS05 kX3iWGEv1Rg3El1 yX3o*FW1n34L0Z26TGf1UH ob6ciLF8 wZ6epL49 oc3*nF23 mc3unF24 et2WeG*14i1SQ2W2VKNc2~2AHGx1 my3qxC24 mz3syC02 eX6qzL5f1 *c6shQNU ec6siQY1j1 cg6uaQDw1Jy1 ko9YwOFu15A2A ii9ecP1V c*6qoL65 YY6gwR2A yY6wyRLX2 Yp5mjK10 Wp5ojK22 wu3ydDh1Y1 eZ4s~HY1m4 iZ7*oKg2Z1 WZ7oZM47 gj7kcIFd1 wz6YdK7G *b9owF07 on9irLVO qm9isL8D ex6yhK45 uW7WqK32 cX7*pKD2 sX7aqKF5 wY6ozR28 sY6ezR4A gg6YaQ3M Yy3whGn1d4Lh1Ue2 ky3WoG2x33b19V ox3ugGGe1 uZ6qiS09 uZ6shS0A sZ6eiS2C wZ6YiS0f2 gz8WbM24 Yq4kXJ5P *n9cyO15 as3sWGs2m3 gx3*fG8Q qn3ezFq1M oz8waM6B so5mjKA2 gx3gaD8L iv3kdDc1t1Oh1 in9WsL98 *n9crLB6 ui9WZP3K6F yi9YZP6F wl9Y~OIJ gm9c*OFS";
+const ROAD_SEC_ENC="at6spKm3d3Qk3n2Y7h2j9Bf8Y2Oz1R5l1NUt5z39ZE Yb6kcKc4n2u4X6MK us6iYLm2t8m2l597 gx8kfN4*3Li5f1*4l1m2~2s1~4r1x14l1SNm19g24q5Pg74a9~2WLf2u4Py3Mo3o2u4 gx8kfN9X6c2v90f3X1j8MX7 gq6ygI2Mw1ZA ah6woE4v6Qt29~5Jj4Kv1s1l1 *p5YbJn2j4d1p5 gp6klDc2Y4W1o34i2Y1q2Y1Bc2q1 iW7*pJZ1i2HNFd20z3 kv7qnIn1w1*1~198 ce8glIb3Z5v1n4W3dA WZ8wbIu2a6W3q4k1W4~1d5 aq6ciIZ3eH si7avJ9j1GF YW7meJu1w6Gm4m1W3Fs38k6 cm6moKNp2c1m4f3y2i4t35d1FG8Y1 ar6mfLu1~6CCOe1e3cB ip6enLu1t7 ap6YnL6C5B un8oqKc4c3 sW8ypGf1h3Ou1 qh7woJ4f2e1v42h5e1d4Z1dAw1rFx1sF4e3W1w6d1i43w5f1m53Y4UY2RZ24t2 ag7iyGw1Y1i8m1w2Y4e2y64X1a1LHVNs1Nh1 wu5wyKCH5E wq5YcLLEx1z6b1j1c1u1*1u7 un8scK*2Rk2c1*1Nc2m1c3LW1Qq1m3i1UQm1Y1g5q1l1a25W7e2k3a2 er8YkLD0 uh9cnP7d1 kZ7*uLy1Uk2o52YBW1*F*1c6t1i60W5 sq6iuLF8G7 od8ooGEc4 wa7*uG5IAE6H9D ka7svGr8sFq4z73J *X7Y*Go1X3c1b1 it8kiIRu1Cg2De6f2k87w4He2n2*4t4W3p5g6v1o3j2o8h2g6Ob2u3q3k2q3u23 qc9mzH~1i1W2b1 w*6kcJRLX1X3b3x4n1r4Rf1 aW7ieJf1z1 w*6ocJe1*1 *X8evGX1z48O cb7uvGO8 kn6WvKh2e1Vb3 Wo6iuKHK ww6WkLv1Y7y1~6r2n9b1f2 gy6qqLQ0Y2z1Mb275 wx5qfL yx5gfLHt2PG0~1MT7f3t1f4 yx5*fL4g6 ay5omL uu4wpLAA mp4YiLm1~1FM gl5ceKj3a3n3m8f2w3h2k2h2o8*1oE2W9SW4 W*5ewLGX2q1DEO5k1Az27U *z5evL1U wz5gzL6MBn18x1 uz5kaMQHFZ14i1 w~5klMDV0r7Px2 kz5abMALZ1u3LODY5~2p2h1a1l2w7f2sCv2i2Z2p3f1X1 *p8yYIh1O5OAP yo8qZIY1N g~3qoC71 us8ekIMd11H W*6adMw4l3 gz6axNNZ28U Yh5srH0c2 wY8kbIFY1z2i2f2m4i2h4q2f2 kb9gyH2*1 gl6YwJ1H s*6ayN16 se9syJd1tD wY3onCN8k3Jr2C Yz3kzF2g5PkA cz3yyF3I ux3qiGAJ *y3*jGb1f1 *y3WkG*12y1Z1q3b5r3a5v1a1z11 Wc4mcG78a20q1*1X1h1 Wb4oZGVL~2Y1t22 cc4mcG58 yy3uaG9C8E Yz3saG52 Yb6ecKg1iAf1hA yt6muL5Fg1z2 *h6krHi2e8y5kD el6*rJ1*6Fo1 wn3sXC5a3Se3Hq2CV qp3ukC mp3mlC9i1T09O5Rv2b1l1y1k1v1w2c12SKP ks3sqCl1j2i1o2 Yq3ejCCl1g1v12t1HAw2f1o3r3Z2o1j1Y2b2S0U io3orBe1x6 cq3snCj2T ss6eYL24 ix3mhBG6 cr4chGUb1s2q2Es1Vb1BX24k1H18H cs4afG3S as4WgG8t4LZ40f6Ex25f3g1t8B~1p4r1z2g2h2Ah5d4Vv13z1s1Z7RVf5x5r2p1p2Bd2y1LB or4ugGb2Sw1D os4sfG37 is4ufGk1e1d1f1 es4sdG1k1 *t4aiG3C mj6ycRd1f2Hp2O98h3D~2Sb4Nn5QZ3a2r32d1Fb1s1~57X6Hb31d5W2b91t13o2 qZ6mYN24 mg6ylHk1o5 eg6sjH8c2 og6ahH9o2 cw5mpGk2i2*1SL7 wv5soGCQ cz5ghF9s2Ay8Rw2f4o1v2x2 o*5ydFh1k3 iy7qwCx2Ef1X2d14 my3WdCRf3a2d2Gh1 uy3wdC7P az3afCBf1 Yz3cfCe1o8Sg3Vw3 wo5W~O1j2Sh52v7c2v5 qY6sWNX2g1 mX6wXNs2v2 oW6gtMDX23v62w6a1y40w5m1JUc3 iW6emM3F Yl6weQ6*1 su5apJo1s2Uo3s1Y3Y3*2q4W7G2 an5kjISo3OMg2x1 en5ejITPp1Qo1JW1K un5slIFj2 wY4kuJj1f2j3j1z3m3~2g6v3q4f6WE9g5r1c8Qe67Y3Ty1t4*5p1s6Z3g8Ro3 WW3ccMr1h2b2V km3*sMJz2EW3k1e3d1f3 mt3u~M97GQ5H Wz3ydNs2i6 sX4mgFc2r3c3AGH YZ5oaNn4n4q1m1 aq8asKh2n1 uh9cnPg1o3m1m1u4a7 kd9akLd1~10X5X1t4d2~2Pt14N9MAA ek9WpK2z1t2b6Dd3d1j3DZ38b3R23d1 ez7uuPQd1Pe1 qy4asGC*2X1e6Ii4Ry2Z3c6c3Z6Ol26l1Jx3Y2h9AG3c12t1F30g1Pk2 ym4wrI0y7 Wn4utI3z1 Wn4usI51 kk5qpJl9sDp2i70u3PSQN2t3o2j7W9pC iq5cbJD3 Wr5cbJJ0 Yw5edLe1J Ye8YrG9f2e2b13rENt1t3h4s3k4MW22YEd2g1 gc4ocG73 iy7krQ3F *t7ofS4o4r1a6 YZ5oaNy2l4o1D kr5cwF8Vu1m10q2IX2 g~5iXLb4m2 qZ6kaKr3d5Z3X3d1f2j1b5h1f29KE5 qx3qoF2i2s1s25c5 ey4YdGFm9Y2o4 uz4kqGBN qu4gzF7e9Hk4 yt4YhGIx4ErF qg5u*Hr1Y2 *f5*~Hu2l3C~2w11KKQi5y1a3Y2*1Ei1Nc46a6n1g1Rr1 gf6YnOS6 qa6ymOo1Dy3*16T kZ6moOf1OTTr15 kZ6moOc1p1 ea6cnOPg1 Wp5ojKJm4e2o4d2p4Mh4 sf5ayHW1u2 ml6yWK1X1f2n1Ls1b3y3b4k2 il6y~J22 yj6etKQy2IAy7t6 Ym6YwKUM4m198 wj6atK8a1 ut6kcKr1k10c1PFy2h2a1z1y8jJt1a3 e~6isJh5mCZ2o3 Yv5cyKJZ1Ge1 su8sfLj3i4 uu8ofLY1t1i1F kx8cdLc1Lu1x3e2t2f1o1 uu8wuKMW3q1u24k8 su8kuK2C oZ7szJ3n3Gj3l1t29~2 ke9WkJZ1I8U kd9akLEq1Jc32i7 qj9uiLr1Tl16~2a2 sa8WpPBI mW8ysPj2K yx7cgQn1m1A3 ay7*bQBd4 ov8iuN1Y9n1o3j2i3Sc2V*6Mm2k4g7c1Ks2h2w2h4k4t2 ew6ekMKTX1u1Z2*5RW4Dy4Lq10Y8KW2 iY9gyKY1x6Sf2 iw5e~KMo4Jg12W2F2FF0l30o3IG up6sZKc3X5W1l4q1l4u1p1 ys6s*Jd2y2 q*6gyN22 as6WXI5h9s2d8e3x5 cn6ezIc3rH ih9*lPCe1 er8wbKH0 YZ5qlLr1fB2d2c1b5c1z2g2f2c2p3s3t8g3d3 W*6adMx1i2f1u3 ys4wnLz1b2 ew6W~Io2u3Y1a3UM aZ5YmL1D o~3YpCy1Y27F mu4opL88 ok5sjFn2x49l18p1Bi1Eu1 et4WoL ah6YvOh3dE~1v5Jf36Q mj6ycRJy1s1c43Y3t1g41u1q1a5o1U6a6Ew1k154K Yz4*xM0~1 ur5WiO9b1 ig5mvHq211y1Fi1p1w1Vl2 gb7mvG53 gv6YsJFm1 Wd9ozHk2Fs3a1c4Hc3e1 ac5WmHi1w1Qq5Y2Y2 Wj5gvHh24X2r1Jp1Bd4j1x1 y~3ykNe1o2c2u1*16u1n1t1m1t2F *~5*xL7y2 wq5YhRg1X3m2v2s39g3l3q2c1l2f1X2g2 aX6*XNC3 m*3kpCW1D kq5wlIDf5O~33p1j2l2v1X3Tn5h2D Yh5WrH0M ix5YaL*4Z3o1W6 iq5odL5Ps3f4Jn3 y~4ukKq1j1 q~4*kK85 wj3ifMl5j2x2Az3Z2j1c15Z11U wa6qsNFDEM kt7owREi5 ay2*YMg2a1k1o2q1j1e4c2g2BW5u1a1W2Y1c6 qh6WYRDDVOi1DKW3Z3W7b1i1r1q6~1y3Rw3 mu3abBw1g1Mo1Ak87X5 ap4gXJ6D im6ipK5R yi6g~JGR kz3afFq17q1o1W12 uZ7w~J5Z2 gX3epCOj1 Yn5qdGh2k4d1Qn1e3x1H YX5s~Gj1l15p2Pf2Oe28s2 in5ojJo2x44l3 cj6w*Jc2c16k4 kx6*pK6C yv6kqLn1c3 yt6muLER kl6*yJ3x2 il6iWK4a2 el6qzJ4u2 il6yyJ52 Wk4wbLOn13t10Q Wt6*WL7k1 cn6ezI33 cu6gyKl1*5 mu4uiHb1y2 eu4**Jw3Z6I~1 ic6omKj2g1h1i2X2q6B*26W3VI gm4mnIIg4 ox6ofHz2k5t2o86q9 YY8ycIa1d1 sy7akICL uy3arBj1r4 Wz3mrBu1u32w2HW4 kt5msK19 yn3kXC14 gn4ueLf2LVd24S yo4kiLRz2LN *b6ihLBQ il5eeK11 uy8qcM7g1 sW8slHy2o5w1*1Mw3 W*5kuL4S a*6klJ6*4W1a2 su6*wKFi1 *r6mlKe2Y9 *i7swJ7n1 wf8mnGH8 *f8inG3C cl6WyJ2q1 yr6ytLw14 eq6*hLZ1a5 Wr6WfLN*2 op6agKSNm1a6 iW6wWL0X5a2Z7g1n2o2h1 ax5yZL12 ym6syKAD7Z2f11 aY7wmJ~1j8 *w6ymK0Z4 ox6opKJZ3 wk6i*JMP3L kq5aeL5F6G qw6kiK66 yX6*cLl1X6 iv6igKb1D Wz6sxJ26 e~5ytLd1I g*5uuL37 ur6qkKf1h5p1i2f1q6 Wy6aqLCEZ1b1OO uu6exIm1u3 cn6szI0D gq6ygIZ6pDn3zCBl3u1r6RX6p2p1n4r4 aW7cXH4A gk3yhCK3J7NUQ9 Wz4WyMMa3Jb3 yW8gqG5D sW6otM51 yY8ibI2E cY8koHn1~2~2h1b1j2~101x2 yX8ucI08 Wa6W~MJW1 *e5YXIUf1 oq5WmIJG Wr5ulID8 od5q~M*1Io2l1 yy7qdG6p5n1~57n2Ep4Qt2SHe2Qw1Du1a1W1e21e5e1e2 um5akPe1h3w1h2Cl42i1 an5k*K25 Wx5qYL35 u~5afM8g5 s~5icM2u21t2 sp4inLDl38v17W1AELX1Ow41o6Rq2~1y2 up4crL1v3 cz4anKKd1w1T gx4cvKW2r33h4 yw5uYL43 Ya5kzLPt33p9 Wg9ulOA8 uf8YZG21 ok4ejGe3q1o1d3 qv4mkGQW1c2q6 so4oYJEd1 cm4oiI4s4 kt7YgRm1b3Ij3y1b62Z3Qr1 qj6iXPj1r3X1p4 mk6icQIk2 wl6oZRf2g3 wY6s~MFHVK5l1 sa6icKX1z1 eg4yrJ if4ysJd4e3d17X1j1 yd3WmCs5n3 *x4eWO1*46l3Fb6Cu4 ez6sxJ15 mZ6kaRd1x1 Wg5kxH7E mx4swN2Q ml8seKe2~1 im5kxRa1Z2i1h5S~1Y1x6 Yn5g*IAg2 sx7wqFDc4 Ya8kuF6p1 Wa8wvF2h1 ys4smHf6mNBi4Av3 qo4mYJt1m2~1c67m5 en4gaJk1t1 ep4wWJJs1 my4usJ5k1 Yq4axHKb2 wu5wyKn1Y2 st3gWNW2k3c3w3 *y4ixM2K it4kaNl4w3X4q5l3o1w3t1u3j5 o~7YoFJ0 gW8*nFNA Yk4kcL01 ya6omOJK ib6gmOF8 qx3*ZCk1e5 iq5gbJW1ABD Yq5gbJA0 if6ynO~3n1 uf6WoOB3 aq5mcL34 cq5ucL17 Yq5ycL43 ez4yuG31 Wz4YvG46 ug5k*H34 as4WgG is4efG53 sZ9q~H~1e1r2Ec15 Yt8utKq1M ev6*vK33 gr6YXKf1a22H cZ8edKr2p2 YZ6kWN5P qZ7uXE9*3 wm7chDW1NSp2o1Z8 eX6gaNKo9 oY6coNFZ4 gX6gZN4n3 iZ6cqNUa2 st5qYLf1w1 wt4kXLa1p4i2p3 cu5oYLg1K yp5ebJ44 mZ6kaRW2a1g2Z2n2a2t1d1 ks6eZL86 md9ykJa1R io9uuKx1m77w3x1e43a3Jg1 gt7sZSCp1 s~5uXM0z2 mW6YuLA3 aW6qtLR8 iZ6wlS85 yZ6*lS3B qZ6qlS8A sr8wjLY3d4 mt5ctK1L ac5gmH07 Wz4WwM1i1 cp6etKb1a1 gh6qcRW1v1c1a2 iZ6qxR4j1 eZ6myR2TDg1 en6spKJI7R Yt6opKx3s3 Ws6WYIr1y8 sy7akIj1y18B is6okK3D es6yiK0e1 kq6ifKSNOI6s3 eX8isGKW3 aa8euF31 Wa8kuF20 su7odH12 su7ydH23 cZ8mbI93 ox7wrF11 mx7*rF22 ur4egP9W3S*2Bc24i1PW2r1y7 ek4gkQ5e1W1q3Hs4j2u17*1p2c5j2Vd1INk1 yw6gjMEh1 ox6ctN5l50k3 s*6syNGu3 m*6YyNb1T qu6iwK2I eu7ouH oe6oxK0u1p1k6Vq7 q*4evGD~1 ww6oiKLt1Gq1 aw6wgKH9IE iv7yfHCk2Jy7Il6 g~3irCVz3b1f8 *~5*xLE~1 oW6qtM41 Yx7amId1g1 ex7ylI06 Yc8ixH~2w9 *p5ibJ3o3 *u5oyK38 kq4ogL7C Yz7gjIBQ Wu4miGKk1W1IB5 cv4uyOh2Y5 cw4ujO9a2Iy23u4Rm4 ow4qhOBa2Kr27I ks4qZPJy5 ox4eeONw2 sn6ybKo3s2PM um6cbKUM ql6qaKa1I Ys6YfK2F as6afK11 gx6imLDf2 Wl3wkM9T qW3ipMIw4 mW3onM5b1AW3 w~2idMGY9 iW3imMFt9 qW3gpM3t1 *W3isM9X3 go4exLc1~26X3 ek3sgMFZ1 sn3ewMm5e5 cg3*dM05 *q3eoCNH kw6sqJZ1i1 wn3aYC49 *l6YoEs1Z2u2h8q2l3w6v1d1l3p1j1 Wl6goEU7 wq4klLd1z1 aX3urBo1i7c3k3q2Ou2r1o2Bm2e1HD4K Wb6gcK92 oZ7YXK6d1 *q6guLUD Wk4kcL20 ok4aZL21 qk4yYL10 Yk4ecL30 qk4mYLGf3Tb7GZ4a4fBg5j9 ys6s*Jn1i2 uf5*~H24 gv7afH09 we3gdM68 cx6unLf1s2 wg5q*H03 sw6*qJ92 uW6cuM3H *W6YvM5R iZ6wlSn1Y5 wb3YnCs1R76 kt4WZLCn1 Wu4mWLHm2 Yu4oiG11 cq5yZPFZ4RN sb6giLg1l8o1j62x1 cp5ypFNf4l3t1 ex6ulL2k22v2 i~2YlBC*2i1u3 eZ7icE2L ay7krQKe1Fu1 ab6eXO1G ig5YpSq2x6Qb6c1t2g1p7 s*3ouBHd1 mk6icQn2p6 yq4ilL yj6*XP7H mv6enKj2g2 qm6saPPZ2z1J kt6oyJHa2 *w6oqJ70 ys8onI5n3 qs8erI8r3 os8kkI63 qf9wnKn2F Wh9ooKh1N Yn4W*I1J Wr4YgLk2X7 ox6kpK3D Yz3saG66 a~7WmGEW1 q*7wkGOw1 i~7imGl2t8 Wi8uYQ~2t4T~2 kt7YgRl1*78k3e1a5 wt7oWS2J oX9g*KCL mg4irJs2b4k1F mf4wsJ gW4wpCLP uf8mhKy1l1Y2Io1n1Va1 wd8aiK04 WW6olM86 uX3qxM5m3j1W2 q*5aaMAO kd9kwL2F at4WmH6B Y*5uYMCb3Dn1 k*5oZM14 i*5uZM06 wz5kwL3*2 uz5szL43 uq5osKo1h2W1y1 cx6amNt1z3p2d3FK at4*nL06 mu4mpLd1j1 et4eoLe1g1 yl9syOGk1 Ym9azO5D mm9Y*OFR kX4arCUy1 Yz3aYCj1i1 Wz3WgFh1q8 gY6ilCk6l4e3g1u3Y5c5j2q5n8w30Y2X2e6r7i5X8W1Z3 mX6YmCQL kq6gfK02 yo5onI17 ey4uyG24 qk5cpJ5E89 ky4myG31 an5*iI1A yk5ejI15 ct6wtIo1k3 Wy7YeQ3a2 uq4kgL15 cv7*nI2C cg8gqI32 wb8ohI1A wb8WiI47 ob9e*H1z1 un5YmI21 so5knI04 wz4mrG40 Wz8qbLp1i1 ax8adLh1KZ1w1 cZ5maN32 wo5e~OUU uo5a~O24 kn4myLSd1 Wv7WrHLi3 yZ6YmSAc1 Yg6coO95 gm3mWCi1U w~5klM64 sZ6kYNJ~1 gX6*WN3Z1 kZ6iwR42 ae4sxEs1j5W1v5s2f7Y2f7u1x8p1f9X2p4p2b4t1h5Z2t1Fd5n1n1 ek9gpK70 Wz8qbL24 az8kbL36 mu8wfL46 gr5mwFp3q7Qi3j1a2 gt5owF8Y2 ah6woEZ1a35e5f2w4j6*4l2*2 st5ywF36 ut5ixF29 ok7wgI42 eY6sYRe1u1 ev7ueH36 uv7ceH2C qa9y*HTO uk7ogI51 uk7*eI66 qZ6klS7C ai7itJ4C ks6efK93 mt6qfK16 wt6*fK05 u~7aoF15 uf8okG40 yf8gkG30 ex6cqJ9C Yl6gzJ28 Wy6afH39 mq6WhI53 Yl6qwJ4i1 cY6kYR14 uW6qXR25 kZ6caR14 ci6uaR22 eZ6uxR22 gi6waR03 ei6oaR12 yo5cxO3*3 *~7*cK35 *d8aiK52 sn8yqK27 m*4WWNPR kv5gnGZ1p5X1b83X3AZ3 aj6g*J0I el6owJ3x2 mi6aXR5K yZ7osJ34 wZ7wsJ24 er8akLCH gv5cZDW2n9y1Z2e2Z5Y2f2 so3ggCo2v1 el3*XCKb1 gh3qpCh3q1Lt16~2 cv4wjG5C wf5*xH8D ku4ccG1C e~6acMd1W1 mh6WpEB5 ki6uoEo2D ot5exF44 or7uvCi1J *l6slDLm11o7t1u2 mt3aWN23 kt3u~M14 im3ssM32 em3YtM61 ox4wxN40 yj3yfM43 uk3ckM41 sy6mvN21 sy6evN12 ex6gmN15 sw6ijM26 up5k~D6X3w1h9o3vF aj5o~EKX5a2b5I~5Y1h43Z3a1~4e1h3 gX7gXEg2EUJ*1f4m3v5a1b5s5p6 eZ7icEX1e5 cb6uXO7Z2Z1Ca19 y~2cbM8x2 it8kYIj3E Yt8YjI68 md9ykJ07 uZ6oYN13 wf8wYG12 k~7umG23 YX8uqG54 kp5uqFo1s3 sW8maKKr1 yw6coLA5 gw6mpLIf1 eb4WvC62 ab4suC46 ip5yqF23 ke7aoM3H Ym9kzO21 sz8mXIf6U uY6mvGB8K373 ac7ovG0M0L ec8*wHPx3v1x1j1t2 wm4YtI63 cv7afH42 YZ6cWNDG gp6ccSf1B0f1 uq8ekLG3 *a4suCn2r1 k*5*ZM66 iZ6cqNP~1 in6eePNn3 qn6weP7H *y3scBX1W5 er5mbJ06 Yy7WzPBu2 ku5YxKNv15X2 gd9*kJ61 az7gjI01 st7cXS0S et7maS12 gt7iaS0L W*4krG07 ez3kfF cc4wcG07 ah4igGk3y2 *l3iWC22 Ym3iWC03 *l3aWC04 cq3ghBAb2 co3kgCZ1GS7 gk3mhC8Z5Mj4 ul3YWC Yx3ohB44 mb3cnCA3 cW3erCa1~1 kj3knCZ2c2 wY3snC03 sY3mnC06 kk3yhC30 kk3YiC05 ay5cmL3J eX4wqC25 gX3*uMEs2 we7YxGD5E6 Wo3cXCCpB1W1 op3YkBKt2 w*3gyB3t3 *~2mcM27 w~2acM18 ag3sdM16 uh3ceM04 wh3geM03 aa3icM06 Yy4uZO30 *x4YaO40 sw4uhO33 mw4*hO42 *m2egNy1h2c9z5a4P gW3smM40 gx6WxL4EUn1DX51k4 qx7kWQ4e1 sb6imO17 qp7idB~4u4n1c5 ac8ixH4D3E op6icS7586 az7WvPX1W4 sy6mvN Wp5ywO3A WY6wjN5R yX6akN4C es8ajL15 Ys8WjL28 WY7YaMt2Y2 me7kpM1f1 ge7goM20 ie7YoM10 ml4i~L*1x2 gZ8*qPW1h1 eX6yYN0k12V eX6WYN0S eX6cXN0Q eX6oWN0K wz6eYEm3T Wr7yvCNw5 sp4WdK24 *p4scK9G yp4*cK11 qb6giL20 qx6cqLAK kx6wpL15 kx6wpLE2 kg9kmOIw2W2m3Ec3k2u2 ef6wYRUD ex6ipLHB eX6yvGr2Z3 WZ6qvGU4 kx5kdLA*1 sW6iXR06 qx6cqL5B ud8uoG07 wf8qmG0O Wr7yvCI3 Yi8WmK0G kr5cwF3A ss6eYLr1u6 *h5sbFc1Z6 ov7YoI3D ex5qcL6Q er5ubLDA *t5mYL74 Yf9clOUI yb9aoOc2d3W1A uy6uqLB5 gx6cvL0w1 iy6yvL0E wx2*sCg24Y2v1 el3gnMGu2 ol3coM5T ul3kqM41 sx4oxN3L mw5YdL14 mw5cdL03 am5WxIUg3 ox6evL71 *x6avLB4 Wy6*sL1c2 *x6msL2E ow6yoL Wx6*kL8Q sp4eWQDc9Z1o1Z1Dt2u3 yk3wjMJZ3 Yz4*vM12 aq5otMIl3 gx6WqJ16 ga3ucM05 mg4mlNl3g2 mg4mlNQ1 gh4elNP8 kh4mlN25 gX3*uM0B cX3ouM4C gX3cuM5J u~2mcM2S av7cqH3Q ku7kuH4H av6qnMAd1 yu6YoM8D qd8yoG41 Yv6onM22 gv6gnM33 ix6snL30 sx6cfH3C oa7mvG36 i*7ojG8e1 Y*7whGAu1 kW7cXHm1Z3 ox3oZC2C ew7ohQ38 wp5abJ24 *p5abJ14 *o5sjK1O *r4wfGBU is4qbG3Y2 iu4cbG2W1 yu4msF1i1 go4ikGTEl3~1 gb4WdGE7 ia4udGUN gc4ocG35 uc4kcGD4 Yd4ocG93 qg4yfGGGj1l1UW1 mf4seG66 cq5kaP3i2 il3ymMBX2 gx6ypL41 ix6qpL12 Ws8qtKx1l1 wY6g~M16 qh9usGk49W4v2q23o5k5Qg2 yX9mzK3G YY9kzK13 WY9qzK21 qW9y~KUn1 gz8YbL5C cz8obL13 on6goK09 ys8aoI36 ql3ulC14 sl3*lC03 cY9wyK6F Yr5euFr1h3 Yr5ouFKK gs8utK53 as8utKU0 im4enI17 km4wnI0B wY7gZMPO ok5sjFAA wk5wjF73 Yl5WkF40 cp5ypF4Q gp5qqF3N gp5yqF20 yd6wzGa1W1 gd6YzGIO a*6ilJ02 eg6gYR03 cg6eYRTI gf6*YR13 cf6wYRh1G wd6mZRi1F sd6kZR24 gx8*cL3B ur8ccKFB er8*bK03 ar8wbK04 el8WfK89 uf8mhK52 qf8qhK43 mf8qhK04 Ye8aiK30 *d8eiK03 kZ8odK79 mW8uaK67 mW8saK02 ik9kpK33 ek9WpK18 ek9gpK09 ek9mpK05 ck9gpK14 Yj9sqPFf1 ij9crP9F cl5unJFe1 uk5YpJq2l5 Yh5YrH01 ah5qrH1H Yr5ulI10 oe9yjJ34 *z4arG5L Yv4aqLHJ *Y6azRAJ iZ6cxR3C oZ6YwR05 oZ6gwR07 Yp5mwO1C cp5cwO3A gp5uvO3E mp5wuO5U or5agO3C wr5kfO7M es5aeODg1 cX6*~M2K az4wuG9H ac4YcGZ1l2 oy3*iG50 iy3gjG8X1 e*3aaGA7 a*3WaGPO iz3waGOJ gz3uaG71 kz3afF76 az3kfF3I6F ez3ifF67 Wy3yhG5e1a1S mc7awGw1S ke7swGb2R Wc7svGL5 at4WmH7M oz5oaM13 kz5oaM22 ov8iuN7F Wd9ozH51 wc9szH63 e~6gsJ02 i~6isJ31 ew5gpGNx1Ae1 Wx5aqGNP oy6WvNVv1 se7exGE69D q~6imL8A sv8gYIQ0 wu8cYIS4 qs8irI03 ks8usI6h1 ib5qmH5JFEM6 Wc5YmHL2 kb5mmHI5 cy7yqQ22 ay7krQ30 gZ8*qPf1k1l1G ay7*bQ3a2 qx7eWQ2F cg6inO3U et7maS23 qh9usGB3 eh9ssGC2 Ye8*sG0x1 WX8erG8a1 Yc8exH04 oh6cxO28 ix3mhB51 cx3ihB17 cx3qhB63 qx7kWQ05 *l6slDk1X3SY2Y1O ki6uoET8 yj3ciC06 un3umCY1E yd3WmCB6 md3gmCC9 id3omC4A ed3cmC36 so3ggCF4 Wo3sgCMB *k3uhCa2P qy3YrB46 Wz3mrB37 wy3irB64 s*3qzB4f1 g~3qoC46 m~3uoC53 k~3*oC36 Wo3cXC16 Wo3mXC09 yr3ieC07 up3kkC3A mp3mlC49 up3ykCAp1 op3alC1C yl3WqM9v1 ix7ylI05 ew7yeH8M if4ysJ41 mf4ssJ36 qf4ssJKP cg4urJHQ ig4orJ34 gg4urJ6B y~3ykN1D u~3ckN59 s~3mkN6C ez3aeN5B *y3mdN7B eh5ovH3z3 mp4a*P29 qp4uzP25 op4wzP4k2 ur4egP2D yr4ofP09 ur4wfP0E ks4qZPCl1 us4WYP9q1 ys4WYP2B cv4uyO8F mv4YyO4H iv4cyO5I Wx5eaL42 qf5omG3C qf5kmGCR qf5kmG04 oz7eyCb1p1 i*2efBW1w5 cs6eXI17 eq6mhI3M ag6coO11 qa6cuNAb1 ya6mtN7M qa6i*NCc2 *a6q~N9d1 ia6asNVz1 ka6ozN6h5 qt4YhG66 gw7shQ70 wg6*fH7c1 W~8gXIf16 ic7awG40 cc7cwG61 mz3sXCDE cx5caL63 ov6mgK53 Yy5grGX1b1 oq5ynI3X2 Yb7wvG41 qa7ivG14 *r4ibNs1V yx4cbO9Y3 wt7oWS1C st7mXS27 wt7YXS0F s~5uXM0q4 g*5wsG27 c*5ksG18 mY6mvG2A uY6uvG07 yZ6WWO aa5uzL19 qr4ubNAB yq4ocNOP qt4eaN76 iY6uvGZ14 mv5knG13 ix6snN3h1 ax6*lN6a1 Yx6olN2C Ys6kXI1I *a8apP2R ua8*oP41 wa8soP3A Wb8soP33 ya8yoP20 *a8gpP05 ka6ozN6Q oW6aYNI5 wa6YtN2E wx5qfL20 mp3qkB2A op3YkB0C qp3kkB1B um5ekP03 k~7mmG13 yz7YhG6O eX4kqCTJ kv8auN0F iW6itL78 gZ6u~M7E ca6y*M54 Yh6cpE43 *t5mYL82 ol6qYK1t1 av5syKe1o2 Yn6*zI47 oi6*~JAJ eX5*ZL6c1 qq5qsK41 Yu4aWL1C kW8elH8E qf7yxGGG af7kxGGE uo8*ZI49 Wn6qyK32 sl6ewKC5 ix8edL21 cx8YdL12 w*3utCGh2 sw6mmKb1O *w6*iK1u3 uu6abK13 we8kmI14 we8qmI21 *w6imK10 wk6geQ9z1 aw6WhK20 k*6wbJ06 m*6YcJ25 yr3WeC32 io3WsB10 go3esB20 gj6etK02 w~6omL22 Wb6ecK02 sp4irL20 kg9kmO0B ig9wlO50 ig9YmO2C qb9eoO56 ub9ioO13 ch9qoK51 *k5wjF30 *k5WkF40";
+
+/** Avkodar ett lager till [[[lat,lon],…],…]. Görs en gång och sparas.
+    step är rutnätet strängen kvantiserades med: vägarna ligger på 11 m
+    (0,0001°) eftersom Trafikverkets mätsträckor ritas ovanpå dem och minsta
+    avvikelse syns som att färgen lämnar vägen. Kustlinjen klarar 22 m. */
+function decodeGeo(s, step){
+  step = step || GEO_STEP;
+  const ix={}; for(let i=0;i<GEO_ALPHABET.length;i++) ix[GEO_ALPHABET[i]]=i;
+  const out=[];
+  for(const part of String(s).split(" ")){
+    if(!part) continue;
+    const v=[];
+    let i=0;
+    while(i<part.length){
+      let n=0, sh=0, c;
+      do{ c=ix[part[i++]]; if(c===undefined){ n=NaN; break; }
+          n|=(c&31)<<sh; sh+=5; }while(c&32);
+      if(!isFinite(n)) break;
+      v.push(n&1 ? -((n+1)>>1) : n>>1);         // zigzag tillbaka
+    }
+    const line=[]; let y=0,x=0;
+    for(let k=0;k+1<v.length;k+=2){
+      if(k===0){ y=v[0]; x=v[1]; } else { y+=v[k]; x+=v[k+1]; }
+      line.push([GEO_LAT0+y*step, GEO_LON0+x*step]);
+    }
+    if(line.length>1) out.push(line);
+  }
+  return out;
+}
+/* Bakgrundens lager, underst först. Kustlinjen ensam läste sig som klotter
+   — det är vägnätet som gör Stockholm igenkännbart. Motorvägarna ljusast,
+   sekundärvägarna nästan osynliga, så att Trafikverkets mätta sträckor
+   ovanpå fortfarande är det ögat fastnar på. */
+const BACKDROP=[
+  { id:"kust", cls:"coast", enc:()=>COAST_ENC,    step:0.0002, color:"#22384d", width:1,   opacity:.95 },
+  { id:"sek",  cls:"road",  enc:()=>ROAD_SEC_ENC, step:0.0001, color:"#1d2836", width:1,   opacity:.9  },
+  { id:"pri",  cls:"road",  enc:()=>ROAD_MID_ENC, step:0.0001, color:"#293748", width:1.4, opacity:.9  },
+  { id:"mot",  cls:"road",  enc:()=>ROAD_BIG_ENC, step:0.0001, color:"#354b63", width:2.2, opacity:.9  }
+];
+let backdropCache=null;
+function backdropLayers(){
+  if(!backdropCache)
+    backdropCache=BACKDROP.map(l=>({ ...l, lines:decodeGeo(l.enc(), l.step) }));
+  return backdropCache;
+}
+function coastLines(){ return backdropLayers()[0].lines; }
+
 function initMap(){ drawMap([],[]); }
 
 /** Ritar hela kartan. Anropas vid varje uppdatering och vid omritning. */
@@ -1042,6 +1148,28 @@ function drawMap(routes, cams){
   const T=mapTransform(currentFit,w,h,10);
 
   const svg=mkSvg("svg",{width:w,height:h,viewBox:`0 0 ${w} ${h}`,class:"mapsvg"});
+
+  // 0. bakgrundskartan: kustlinje och sjöar underst, så att vägarna
+  //    hamnar i ett landskap istället för i tomma svarta rutan.
+  //    Kortare linjer utanför fönstret hoppas över — 500 paths per
+  //    omritning är onödigt när kanske hälften syns.
+  if(M.coast!==false){
+    const [[bs,bw],[bn,be]]=currentFit, mrg=0.02;
+    const synlig=line=>{
+      for(const q of line)
+        if(q[0]>=bs-mrg && q[0]<=bn+mrg && q[1]>=bw-mrg*2 && q[1]<=be+mrg*2) return true;
+      return false;
+    };
+    for(const lager of backdropLayers()){
+      const col = lager.id==="kust" ? (M.coastColor||lager.color) : lager.color;
+      for(const line of lager.lines){
+        if(!synlig(line)) continue;
+        svg.appendChild(mkSvg("path",{d:pathOf(line,T),fill:"none",
+          class:"backdrop "+lager.cls, stroke:col, "stroke-width":lager.width,
+          "stroke-linejoin":"round","stroke-linecap":"round",opacity:lager.opacity}));
+      }
+    }
+  }
 
   // 1. ledernas skisslinjer, svagt streckade
   const skeleton = M.skeletonLegsOnly
@@ -1073,7 +1201,7 @@ function drawMap(routes, cams){
         stroke:"#cfe4ff","stroke-width":1,opacity:.45}));
     const [x,y]=T.px(pt[0],pt[1]);
     svg.appendChild(mkSvg("circle",{cx:x,cy:y,r:8,fill:"#cfe4ff",
-      stroke:"#0c1016","stroke-width":2}));
+      stroke:"#000000","stroke-width":2}));
     const t=mkSvg("text",{x:x,y:y,class:"camnum","text-anchor":"middle",
       "dominant-baseline":"central"});
     t.textContent=String(i+1);
@@ -1106,6 +1234,18 @@ function drawMap(routes, cams){
  *  6. RENDERING                                                         *
  * ==================================================================== */
 const el = id => document.getElementById(id);
+
+/* Bilfärja, ritad för att vara läsbar i ett fält på ~33 px: skrov, däck,
+   och en bil ovanpå. Bara fyllningar, inga tunna linjer som försvinner. */
+const FERRY_ICON =
+  '<svg class="ferryicon" viewBox="0 0 26 16" aria-label="färja" role="img">'+
+    '<path d="M1.2 11.6h23.6l-2.6 3.9H3.8z"/>'+          // skrov
+    '<rect x="3.2" y="10.1" width="19.6" height="1.6" rx=".4"/>'+  // däck
+    '<rect x="7.6" y="6.6" width="10.8" height="3.3" rx=".8"/>'+   // bilkaross
+    '<path d="M10.1 6.6l1.5-2.4h3.8l1.5 2.4z"/>'+        // bilens tak
+    '<circle cx="10.2" cy="9.9" r="1.15"/>'+             // hjul
+    '<circle cx="15.8" cy="9.9" r="1.15"/>'+
+  '</svg>';
 
 /* ---- skalning ------------------------------------------------------ *
    Tavlan ritas i 1920×1080 och krymps till fönstret med transform.
@@ -1149,9 +1289,12 @@ function fitRows(host, selector, showNote){
   host.appendChild(n);
 }
 
-/** Anpassa listorna som kan bli för höga för sina rutor. */
+/** Anpassa listorna som kan bli för höga för sina rutor.
+ *  Ingen notis om de kapade raderna: "+3 fler" tog en hel rad i anspråk
+ *  för att berätta att en rad inte fick plats. Bussarna ligger i tidsordning
+ *  så det som kapas är ändå det som ligger längst fram i tiden. */
 function fitAll(){
-  fitRows(el("buses"), ".busrow", true);
+  fitRows(el("buses"), ".busrow", false);
   fitRows(el("legs"),  ".legrow", false);
 }
 let legState={};
@@ -1168,7 +1311,12 @@ function closureVerdict(){
   if(!st) return { code:"unknown" };
   if(st.coveredKm>0){
     lslHadData=true; lslMissingRuns=0;
-    if((st.level??0)>=3 || (st.speed!=null && st.speed<20)) return { code:"stopped", st };
+    // Mäts en hastighet är det den som avgör. Nivån är kvoten mot normaltid
+    // och kan slå i tak medan bilarna fortfarande rullar — då är det kö,
+    // inte stillastående, och absolut inte en avstängning.
+    const grans=CONFIG.watch.stoppedKmh ?? 15;
+    if(st.speed!=null) return { code: st.speed<grans ? "stopped" : "open", st };
+    if((st.level??0)>=3) return { code:"stopped", st };
     return { code:"open", st };
   }
   lslMissingRuns++;
@@ -1187,11 +1335,11 @@ function renderBanner(){
   let cls, title, note, caveat=true;
   if(v.code==="stopped"){
     cls="crit"; caveat=false;
-    title="SÖDRA LÄNKEN: STÅR STILL – kan vara avstängt";
+    title="Södra länken: står still – kan vara avstängt";
     note=Math.round(v.st.speed||0)+" km/h västerut · bedömt ur mätdata, inte officiellt besked";
   }else if(v.code==="nodata"){
     cls="crit"; caveat=false;
-    title="SÖDRA LÄNKEN: ingen mätdata – kan vara avstängt";
+    title="Södra länken: ingen mätdata – kan vara avstängt";
     note="mätsträckorna på väg 75 västerut har slutat rapportera";
   }else if(v.code==="unknown"){
     cls="warn"; caveat=false;
@@ -1200,7 +1348,7 @@ function renderBanner(){
   }else{
     const lvl=v.st.level??0;
     cls=["ok","warn","bad","bad"][lvl];
-    title="SÖDRA LÄNKEN: ÖPPEN · "+LEVEL_WORD[lvl]+" in mot stan";
+    title="Södra länken: öppen · "+LEVEL_WORD[lvl]+" in mot stan";
     if(delay>=1) title+=" · +"+Math.round(delay)+" min";
     note = measured.map(x=>CONFIG.legs[x.k].short+" "+LEVEL_WORD[x.st.level??0]+
       (x.st.speed? " "+Math.round(x.st.speed)+" km/h":"")).join(" · ");
@@ -1209,6 +1357,19 @@ function renderBanner(){
   t.textContent=title;
   // Förbehållet bara när läget ser normalt ut — vid larm står det i noten.
   m.textContent=note+(caveat?" · avstängning bedöms ur mätdata":"");
+}
+
+/* Slår ihop leder som ligger efter varandra på samma väg (cfg.road) till
+   ett stycke. Leder utan road bildar alltid ett eget stycke. */
+function groupLegs(legs){
+  const out=[];
+  for(const l of legs){
+    const prev=out[out.length-1];
+    const road=l.cfg.road;
+    if(road && prev && prev[0].cfg.road===road) prev.push(l);
+    else out.push([l]);
+  }
+  return out;
 }
 
 function renderDestinations(){
@@ -1242,22 +1403,36 @@ function renderDestinations(){
         `<div class="rname"><span class="txt">${esc(r.name)}</span>${chips.join("")}</div>`+
         `<div class="delta" style="color:${levelColor(levelFromRatio(1+r.delay/Math.max(r.free,1)))}">${fmtDelta(r.delay)}</div>`+
         `<div class="eta">${Math.round(r.eta)}<u>min</u></div>`+
-        `<div class="legbar">`+
-          r.legs.map(l=>{
-            const st=l.st, has=st.coveredKm>0;
-            const col = has ? levelColor(st.level) : C.none;
-            const tip = l.cfg.name + (has
-              ? " · "+(st.delay>=1 ? "+"+Math.round(st.delay)+" min" : LEVEL_WORD[st.level??0])
-              : " · mäts inte av Trafikverket – restiden är beräknad");
-            // Omätt markeras med diagonalstrecken och texten i title —
-            // inget frågetecken i etiketten. label skrivs ut när sträckan
-            // förtjänar sitt fulla namn, annars kortformen.
-            const txt = l.cfg.label || l.cfg.short || "";
-            // Texten i ett eget span så den kan huggas av med ellips om
-            // fältet ändå blir för smalt — centrerad flextext klipps annars
-            // mitt i ordet i båda ändar.
-            return `<b class="${has?"":"nodata"}" style="flex:${l.cfg._km};background:${col}" `+
-                   `title="${esc(tip)}"><span>${esc(txt)}</span></b>`;
+        `<div class="legbar">`+groupLegs(r.legs).map(g=>{
+            // Ett fält per led: färgen är dess eget läge, texten dess namn.
+            const bars = g.map(l=>{
+              const st=l.st, has=st.coveredKm>0;
+              const col = has ? levelColor(st.level) : C.none;
+              const tip = l.cfg.name + (has
+                ? " · "+(st.delay>=1 ? "+"+Math.round(st.delay)+" min" : LEVEL_WORD[st.level??0])
+                : " · mäts inte av Trafikverket – restiden är beräknad");
+              // Omätt markeras med diagonalstrecken och texten i title —
+              // inget frågetecken i etiketten. label skrivs ut när sträckan
+              // förtjänar sitt fulla namn, annars kortformen.
+              const txt = l.cfg.label || l.cfg.short || "";
+              // Färjeöverfarterna är bara någon kilometer av en 70 km-rutt och
+              // fälten blir små. En ikon läses snabbare än ordet "färja".
+              // Texten i övrigt i ett eget span så den kan huggas av med ellips
+              // om fältet ändå blir för smalt — centrerad flextext klipps
+              // annars mitt i ordet i båda ändar.
+              const inner = g.length>1 ? ""
+                : l.cfg.ferry ? FERRY_ICON : `<span>${esc(txt)}</span>`;
+              return `<b class="${has?"":"nodata"}" style="flex:${l.cfg._km};background:${col}" `+
+                     `title="${esc(tip)}">${inner}</b>`;
+            }).join("");
+            if(g.length<2) return bars;
+            // Sammanhängande sträcka på samma väg: namnet en gång över hela
+            // stycket, färgfälten kvar var för sig.
+            const km=g.reduce((s,l)=>s+l.cfg._km,0);
+            const allNo=g.every(l=>!(l.st.coveredKm>0));
+            const nm=g[0].cfg.label || g[0].cfg.short || "";
+            return `<span class="lgrp" style="flex:${km}">${bars}`+
+                   `<i class="${allNo?"nodata":""}">${esc(nm)}</i></span>`;
           }).join("")+
         `</div>`;
       box.appendChild(div);
