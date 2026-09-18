@@ -12,17 +12,29 @@
     --r:14px;
   }
   *{box-sizing:border-box}
-  html,body{height:100%;margin:0}
+  html,body{height:100%;margin:0;overflow:hidden}
   body{
     background:var(--bg); color:var(--text);
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,Helvetica,Arial,sans-serif;
-    font-variant-numeric:tabular-nums; overflow:hidden;
-    /* Skalar med BÅDA måtten. Tidigare följde textstorleken bara höjden,
-       så i ett smalare fönster blev texten för stor för kolumnerna och
-       höggs av. min() låter det smalaste måttet bestämma. */
-    font-size:clamp(8px, min(1.12vh, 0.66vw), 16px);
+    font-variant-numeric:tabular-nums;
+    display:grid; place-items:center;
   }
-  #app{height:100%;display:flex;flex-direction:column;gap:.7vh;padding:1.1vh 1.2vw}
+
+  /* ==== Fast format som skalas som en helhet ======================
+     Tavlan ritas alltid i 1920×1080 och krymps med transform för att
+     passa fönstret. Allt inuti behåller sina proportioner, så ingenting
+     kan huggas av eller försvinna när fönstret blir mindre — texten blir
+     bara mindre, precis som på en affisch.
+
+     Tidigare skalade varje mått för sig mot fönstret. Då tog höjden slut
+     i vänsterkolumnen och korten längst ner klipptes bort helt.        */
+  #app{
+    width:1920px; height:1080px;
+    transform-origin:50% 50%;
+    font-size:12px;
+    flex-shrink:0;
+  }
+  #app{display:flex;flex-direction:column;gap:8px;padding:12px 23px}
 
   /* Bara uppdateringstiden — DAKboard har egen klocka och rubrik. */
   header{display:flex;justify-content:flex-end;flex:0 0 auto}
@@ -32,8 +44,8 @@
 
   /* Banderollen sitter i kartkolumnen, ovanför kartan, och är därmed
      exakt lika bred som den. */
-  .banner{flex:0 0 auto;border-radius:var(--r);padding:.9vh 1vw;
-    display:flex;align-items:center;gap:.9vw;border:1px solid var(--line);background:var(--panel)}
+  .banner{flex:0 0 auto;border-radius:var(--r);padding:9.7px 19.2px;
+    display:flex;align-items:center;gap:17.3px;border:1px solid var(--line);background:var(--panel)}
   .banner>div:last-child{min-width:0}
   .banner .dot{width:1.35em;height:1.35em;border-radius:50%;flex:0 0 auto;
     box-shadow:0 0 0 .3em rgba(255,255,255,.05)}
@@ -52,14 +64,14 @@
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
 
   /* Kartkolumnen får mer plats än ruttkolumnen — namnen behöver inte bredden. */
-  main{flex:1 1 auto;display:grid;grid-template-columns:0.82fr 1fr;gap:.9vw;
+  main{flex:1 1 auto;display:grid;grid-template-columns:0.82fr 1fr;gap:17.3px;
     min-height:0;overflow:hidden}
   /* overflow:hidden är skyddsnätet: utan det målade en för hög vänsterkolumn
      rakt över kameraraden istället för att hålla sig i sin ruta. */
-  .col{display:flex;flex-direction:column;gap:.8vh;min-height:0;overflow:hidden}
+  .col{display:flex;flex-direction:column;gap:8.6px;min-height:0;overflow:hidden}
 
   .dest{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
-    padding:.85vh 1vw;display:flex;flex-direction:column;gap:.45vh;flex:0 0 auto}
+    padding:9.2px 19.2px;display:flex;flex-direction:column;gap:4.9px;flex:0 0 auto}
   /* Korten får naturlig höjd. Tidigare tvingades de lika höga och klippte
      då bort sista rutten. Överbliven höjd hamnar i .spacer. */
   .spacer{flex:1 1 auto;min-height:0}
@@ -68,7 +80,7 @@
   .dest h2 .km{color:var(--dim);text-transform:none;letter-spacing:0;font-weight:400}
 
   .route{display:grid;grid-template-columns:1fr auto auto;grid-template-rows:auto auto;
-    column-gap:1vw;row-gap:.3vh;align-items:center;padding:.55vh .2vw;border-top:1px solid var(--line)}
+    column-gap:19.2px;row-gap:3.2px;align-items:center;padding:5.9px 3.8px;border-top:1px solid var(--line)}
   .route:first-of-type{border-top:0}
   .rname{font-size:1.22em;font-weight:600;display:flex;align-items:baseline;gap:.5em;min-width:0}
   /* Ruttnamnet bryts på två rader istället för att huggas av — hela namnet
@@ -85,7 +97,7 @@
   .delta{font-size:1.12em;font-weight:650;text-align:right;min-width:3.4em;white-space:nowrap}
   /* Varje delsträcka namnges i stapeln, annars går det inte att se vilken
      del av vägen som är röd. */
-  .legbar{grid-column:1/-1;display:flex;gap:2px;height:1.85vh;border-radius:5px;overflow:hidden}
+  .legbar{grid-column:1/-1;display:flex;gap:2px;height:20px;border-radius:5px;overflow:hidden}
   /* min-width ger korta sträckor plats för sitt namn — färjeöverfarterna är
      bara någon kilometer av en 70 km-rutt och fick annars bara "fä". */
   .legbar b{display:flex;align-items:center;justify-content:center;height:100%;
@@ -97,19 +109,19 @@
     rgba(255,255,255,.14) 0 4px,rgba(255,255,255,0) 4px 9px)}
 
   /* ---------- bussavgångar ---------- */
-  .destwrap{display:flex;flex-direction:column;gap:.7vh;flex:0 0 auto}
+  .destwrap{display:flex;flex-direction:column;gap:7.6px;flex:0 0 auto}
   /* Busskortet tar den höjd som blir kvar. min-height gör att det aldrig
      kan pressas till noll och försvinna — antalet rader anpassas istället
      av fitRows() efter hur mycket plats som faktiskt finns. */
   .dest.bus{flex:1 1 auto;min-height:5.5em;overflow:hidden}
   #buses{min-height:0;overflow:hidden}
   .bustop{font-size:1em;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;
-    margin-top:.35vh;border-top:1px solid var(--line);padding-top:.35vh}
+    margin-top:3.8px;border-top:1px solid var(--line);padding-top:3.8px}
   #buses>.bustop:first-child{border-top:0;margin-top:0;padding-top:0}
   /* Fasta kolumnbredder — med auto blev vänsterkanten på hållplats- och
      punktlighetskolumnen ojämn rad för rad. */
-  .busrow{display:grid;grid-template-columns:2.7em 1fr 5.4em 7.6em;gap:.5vw;
-    align-items:center;font-size:1.14em;padding:.14vh 0}
+  .busrow{display:grid;grid-template-columns:2.7em 1fr 5.4em 7.6em;gap:9.6px;
+    align-items:center;font-size:1.14em;padding:1.5px 0}
   /* kronologisk lista: en kolumn extra för hållplatsen */
   #buses.merged .busrow{grid-template-columns:2.7em 1fr 9.4em 5.4em 7.6em}
   /* beräknad avgång stor, tidtabellen liten intill */
@@ -145,9 +157,9 @@
   .busrow.cancelled{opacity:.55}
   .busrow.cancelled .to{text-decoration:line-through}
   .busrow.cancelled .when{color:var(--crit)}
-  .busmore{color:var(--dim);font-size:.95em;padding-top:.1vh}
+  .busmore{color:var(--dim);font-size:.95em;padding-top:1.1px}
 
-  #map{flex:1 1 auto;min-height:20vh;border-radius:var(--r);border:1px solid var(--line);background:#0e141d}
+  #map{flex:1 1 auto;min-height:216px;border-radius:var(--r);border:1px solid var(--line);background:#0e141d}
   /* Ortnamn när kartbild saknas */
   /* SVG-kartan */
   .mapsvg{display:block;width:100%;height:100%}
@@ -157,35 +169,35 @@
   text.camnum{fill:#08111c;font:700 10px/1 inherit}
   text.mapattr{fill:#5b6b80;font:400 9px/1 inherit}
 
-  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:.85vh 1vw;
-    display:flex;flex-direction:column;gap:.45vh;min-height:0;flex:0 1 auto;overflow:hidden}
-  .panel h3{margin:0 0 .2vh;font-size:1.05em;font-weight:600;color:var(--muted);
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:9.2px 19.2px;
+    display:flex;flex-direction:column;gap:4.9px;min-height:0;flex:0 1 auto;overflow:hidden}
+  .panel h3{margin:0 0 2.2px;font-size:1.05em;font-weight:600;color:var(--muted);
     text-transform:uppercase;letter-spacing:.09em}
   /* Kartan behöver höjd för att inte bli en tunn remsa — ledlistan hålls kort. */
-  #legpanel{flex:0 0 auto;max-height:15vh}
+  #legpanel{flex:0 0 auto;max-height:162px}
 
-  .legrow{display:grid;grid-template-columns:1.2em 1fr auto auto;gap:.7vw;align-items:center;
-    font-size:1.12em;padding:.18vh 0}
+  .legrow{display:grid;grid-template-columns:1.2em 1fr auto auto;gap:13.4px;align-items:center;
+    font-size:1.12em;padding:1.9px 0}
   .legrow .pill{width:.75em;height:.75em;border-radius:50%}
   .legrow .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .legrow .now{color:var(--dim);font-size:.85em;white-space:nowrap}
   .legrow .dl{font-weight:650;min-width:4.2em;text-align:right;white-space:nowrap}
 
-  .empty{color:var(--dim);font-size:1.05em;padding:.4vh 0}
+  .empty{color:var(--dim);font-size:1.05em;padding:4.3px 0}
 
-  .cams{flex:0 0 auto;height:19vh;min-height:0;display:grid;
-    grid-template-columns:repeat(6,1fr);gap:.7vw}
+  .cams{flex:0 0 auto;height:205.2px;min-height:0;display:grid;
+    grid-template-columns:repeat(6,1fr);gap:13.4px}
   .cam{position:relative;margin:0;border-radius:var(--r);overflow:hidden;
     border:1px solid var(--line);background:var(--panel2)}
   .cam img{width:100%;height:100%;object-fit:cover;display:block}
   .cam.dead img{display:none}
   .cam.dead::after{content:"bild saknas";position:absolute;inset:0;display:grid;
     place-items:center;color:var(--dim);font-size:1.05em}
-  .camtag{position:absolute;top:.6vh;right:.45vw;color:#08111c;font-weight:700;
+  .camtag{position:absolute;top:6.5px;right:8.6px;color:#08111c;font-weight:700;
     font-size:.92em;padding:.15em .5em;border-radius:6px}
-  .camno{position:absolute;top:.6vh;left:.45vw;width:1.75em;height:1.75em;border-radius:6px;
+  .camno{position:absolute;top:6.5px;left:8.6px;width:1.75em;height:1.75em;border-radius:6px;
     display:grid;place-items:center;background:#cfe4ff;color:#08111c;font-weight:700;font-size:.95em}
-  .cam figcaption{position:absolute;left:0;right:0;bottom:0;padding:.6vh .6vw .7vh;
+  .cam figcaption{position:absolute;left:0;right:0;bottom:0;padding:6.5px 11.5px 7.6px;
     background:linear-gradient(transparent,rgba(5,9,14,.93) 60%);line-height:1.25}
   .cam figcaption b{display:block;font-size:1.08em;font-weight:650;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -193,12 +205,8 @@
   .cam figcaption em{font-style:normal;color:var(--muted);font-size:.9em;overflow:hidden;
     display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 
-  @media (max-aspect-ratio: 6/5){
-    main{grid-template-columns:1fr;grid-template-rows:auto auto}
-    #map{min-height:24vh} #legpanel{max-height:16vh}
-    .cams{height:32vh;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,1fr)}
-  }
-  @media (max-width:900px){ body{font-size:13px} .eta{font-size:1.7em} }
+  /* Inga mediafrågor: tavlan har fast format och skalas som en helhet,
+     så den ser likadan ut i varje fönsterstorlek. */
 
   #setup{position:fixed;inset:0;background:rgba(6,9,13,.97);z-index:9999;padding:5vh 6vw;
     overflow:auto;font-size:1.15em;line-height:1.6}
@@ -207,7 +215,7 @@
   #setup ol{padding-left:1.4em} #setup li{margin:.5em 0}
   #setup a{color:var(--accent)}
   #dbg{position:fixed;right:1vw;bottom:1vh;max-width:46vw;max-height:62vh;overflow:auto;
-    background:rgba(6,9,13,.96);border:1px solid var(--line);border-radius:10px;padding:1vh 1vw;
+    background:rgba(6,9,13,.96);border:1px solid var(--line);border-radius:10px;padding:10.8px 19.2px;
     font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#9fd0ff;z-index:9998;white-space:pre-wrap}
 </style>
 </head>
@@ -1092,6 +1100,20 @@ function drawMap(routes, cams){
  * ==================================================================== */
 const el = id => document.getElementById(id);
 
+/* ---- skalning ------------------------------------------------------ *
+   Tavlan ritas i 1920×1080 och krymps till fönstret med transform.
+   Allt inuti behåller sina proportioner, så inget kan huggas av eller
+   försvinna — det blir bara mindre. Skalan går inte över 1: på en större
+   skärm än designformatet centreras tavlan istället för att bli suddig.  */
+const DESIGN_W=1920, DESIGN_H=1080;
+function scaleBoard(){
+  const app=el("app"); if(!app) return 1;
+  const w=window.innerWidth||DESIGN_W, h=window.innerHeight||DESIGN_H;
+  const s=Math.min(w/DESIGN_W, h/DESIGN_H, 1);
+  app.style.transform="scale("+s.toFixed(4)+")";
+  return s;
+}
+
 /** Tar bort rader underifrån tills innehållet ryms i sin ruta.
  *  Enda stället där verklig layouthöjd finns är i webbläsaren, så listorna
  *  anpassas efter rendering istället för att gissa antal rader i förväg.
@@ -1620,6 +1642,7 @@ function showDebug(routes,cams){
 
 /* ---- start ---- */
 computeLegLengths();
+scaleBoard();
 // Kartan får inte kunna fälla resten av tavlan.
 try{ initMap(); }
 catch(e){
@@ -1633,12 +1656,9 @@ renderDestinations(); renderLegs();
 // antalet rader efter den.
 let fitTimer=null;
 window.addEventListener("resize",()=>{
+  scaleBoard();                       // omedelbart, så inget hoppar
   clearTimeout(fitTimer);
-  fitTimer=setTimeout(()=>{
-    renderDestinations(); renderLegs(); renderBuses(busStops);
-    if(!mapBroken) drawMap(lastRoutes, lastCams);
-    requestAnimationFrame(fitAll);
-  },250);
+  fitTimer=setTimeout(fitAll,250);    // radantalet är oförändrat, men billigt
 });
 
 if(!MOCK && !apiKey){
