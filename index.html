@@ -17,24 +17,31 @@
     background:var(--bg); color:var(--text);
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,Helvetica,Arial,sans-serif;
     font-variant-numeric:tabular-nums;
-    display:grid; place-items:center;
+    position:relative;
   }
 
   /* ==== Fast format som skalas som en helhet ======================
-     Tavlan ritas alltid i 1920×1080 och krymps med transform för att
-     passa fönstret. Allt inuti behåller sina proportioner, så ingenting
-     kan huggas av eller försvinna när fönstret blir mindre — texten blir
-     bara mindre, precis som på en affisch.
+     Tavlan ritas alltid i 1920×1080 och krymps med transform för att passa
+     fönstret. Allt inuti behåller sina proportioner, så ingenting kan
+     huggas av eller försvinna när fönstret blir mindre — texten blir bara
+     mindre, precis som på en affisch.
 
-     Tidigare skalade varje mått för sig mot fönstret. Då tog höjden slut
-     i vänsterkolumnen och korten längst ner klipptes bort helt.        */
+     Tidigare skalade varje mått för sig mot fönstret. Då tog höjden slut i
+     vänsterkolumnen och korten längst ner klipptes bort helt.
+
+     Origo ligger i övre vänstra hörnet och centreringen görs med translate
+     i scaleBoard(). Med origo i mitten skalades tavlan kring sin egen
+     mittpunkt medan lådan låg kvar i hörnet, och resultatet hamnade nedåt
+     höger med tomrum uppe till vänster.
+     ================================================================ */
   #app{
+    position:absolute; top:0; left:0;
     width:1920px; height:1080px;
-    transform-origin:50% 50%;
+    transform-origin:0 0;
     font-size:12px;
-    flex-shrink:0;
+    display:flex; flex-direction:column; gap:8px; padding:12px 23px;
+    box-sizing:border-box;
   }
-  #app{display:flex;flex-direction:column;gap:8px;padding:12px 23px}
 
   /* Bara uppdateringstiden — DAKboard har egen klocka och rubrik. */
   header{display:flex;justify-content:flex-end;flex:0 0 auto}
@@ -1110,7 +1117,10 @@ function scaleBoard(){
   const app=el("app"); if(!app) return 1;
   const w=window.innerWidth||DESIGN_W, h=window.innerHeight||DESIGN_H;
   const s=Math.min(w/DESIGN_W, h/DESIGN_H, 1);
-  app.style.transform="scale("+s.toFixed(4)+")";
+  // Centrera den skalade tavlan i fönstret. Översätt FÖRE skalning i
+  // transformlistan, så att translate räknas i skärmpixlar.
+  const ox=Math.round((w-DESIGN_W*s)/2), oy=Math.round((h-DESIGN_H*s)/2);
+  app.style.transform="translate("+ox+"px,"+oy+"px) scale("+s.toFixed(4)+")";
   return s;
 }
 
