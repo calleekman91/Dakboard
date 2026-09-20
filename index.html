@@ -181,6 +181,9 @@
   .busrow.cancelled .when{color:var(--crit)}
   .busmore{color:var(--dim);font-size:.95em;padding-top:1.1px}
 
+  /* Höjden sätts av alignPanels() så att ledlistans rubrik hamnar i linje
+     med busslistans i vänsterkolumnen. Värdet här är utgångsläget innan
+     mätningen och skyddsnätet om den inte går att göra. */
   #map{flex:1 1 auto;min-height:216px;border-radius:var(--r)}
   /* Ortnamn när kartbild saknas */
   /* SVG-kartan */
@@ -195,8 +198,9 @@
     display:flex;flex-direction:column;gap:4.9px;min-height:0;flex:0 1 auto;overflow:hidden}
   .panel h3{margin:0 0 2.2px;font-size:1.05em;font-weight:600;color:var(--muted);
     text-transform:uppercase;letter-spacing:.09em}
-  /* Kartan behöver höjd för att inte bli en tunn remsa — ledlistan hålls kort. */
-  #legpanel{flex:0 0 auto;max-height:162px}
+  /* Ledlistan tar den höjd som blir kvar när alignPanels() satt kartans.
+     min-height hindrar att den pressas till noll om mätningen skulle fela. */
+  #legpanel{flex:1 1 auto;min-height:110px;overflow:hidden}
 
   .legrow{display:grid;grid-template-columns:1.2em 1fr auto auto;gap:13.4px;align-items:center;
     font-size:1.12em;padding:1.9px 0}
@@ -316,8 +320,16 @@ const CONFIG = {
      Vaxholmsgrenen) ritas men styr inte zoomen.
   ------------------------------------------------------------------- */
   map: {
+    /* Fast utsnitt: Rinkeby/Kista i norr, Huddinge i söder, Tollare i öster.
+       Utan det sträckte mätsträckorna ut zoomen ända till Södertälje och
+       Vaxholm, och pendlingskärnan — där köerna faktiskt står — blev en
+       liten klump i mitten. Svansarna ritas fortfarande, de bara klipps
+       vid kanten. De visade kamerorna får alltid vidga utsnittet, annars
+       kan en numrerad prick hamna utanför rutan. */
+    fit: [[59.225,17.800],[59.425,18.270]],
+
     fitLegs: ["L222E","L222W","LSL","LE4LJ","LESS","LE4N","LCITY","LSOD","LSTG"],
-    county: [[59.15,17.62],[59.42,18.24]],
+    county: [[59.15,17.62],[59.45,18.45]],
     dynamicFit: true,
     padWhenExpanding: 0.012,
 
@@ -421,12 +433,21 @@ const CONFIG = {
       polyline:[[59.3210,18.0700],[59.3260,18.0640],[59.3300,18.0600],[59.3340,18.0530],
                 [59.3390,18.0440],[59.3430,18.0330],[59.3460,18.0300]] },
 
+    /* Trafikverket mäter EN sträcka på väg 226 i hela länet — "226 N
+       Silvertunneln", norrut. Söderut finns ingenting, så den här leden
+       visar alltid beräknad tid och streckad linje på kartan. Sträckningen
+       Årsta–Glömsta är därför hämtad ur OpenStreetMap så att linjen
+       åtminstone ligger på Huddingevägen; svansen mot Tumba ligger utanför
+       kartans utsnitt och är kvar som grov skiss. */
     L226:  { name:"Huddingevägen 226 söderut", short:"226", label:"Huddingevägen",
       freeFlow:28, km:20,
       include:/^226 S\b/,
-      polyline:[[59.2900,18.0500],[59.2840,18.0380],[59.2770,18.0250],[59.2690,18.0130],
-                [59.2600,18.0020],[59.2510,17.9930],[59.2420,17.9820],[59.2350,17.9650],
-                [59.2320,17.9420],[59.2350,17.9150],[59.2400,17.8900],[59.2450,17.8650]] },
+      polyline:[[59.2909,18.0543],[59.2868,18.0460],[59.2857,18.0456],[59.2848,18.0463],
+                [59.2836,18.0449],[59.2783,18.0321],[59.2777,18.0208],[59.2741,18.0134],
+                [59.2668,18.0056],[59.2656,18.0059],[59.2568,18.0143],[59.2550,18.0136],
+                [59.2504,18.0092],[59.2456,18.0004],[59.2431,17.9923],[59.2423,17.9872],
+                [59.2399,17.9788],[59.2378,17.9758],[59.2341,17.9735],
+                [59.2350,17.9150],[59.2400,17.8900],[59.2450,17.8650]] },
 
     /* --- Skärgårdsvägen via Rindö och Vaxholm ---
        Två av Trafikverkets färjeleder. freeFlow = överfarten; väntetiden
@@ -557,9 +578,14 @@ const CONFIG = {
 
 const ENDPOINT = "https://api.trafikinfo.trafikverket.se/v2/data.json";
 
-/* Trösklar för kvoten restid/fri restid. Kalibrerade mot skarpa data:
-   nattetid ligger hela länet på 1.00–1.15, enstaka innerstadssträckor 1.4. */
-const T = { flyter:1.15, trogt:1.40, kö:1.90 };
+/* Trösklar för kvoten restid/fri restid.
+     grönt   under +20 %
+     orange  +20 % och mer
+     rött    +40 % och mer
+   Gult (nivå 1) nås inte längre av kvoten — det kommer bara när
+   Trafikverkets egen TrafficStatus säger "heavy" men restiden ändå ligger
+   under +20 %. */
+const T = { orange:1.20, rott:1.40 };
 
 /* ==================================================================== *
  *  2. RENA HJÄLPFUNKTIONER                                              *
@@ -685,10 +711,9 @@ function statusFloor(status){
 }
 function levelFromRatio(ratio){
   if(ratio==null) return null;
-  if(ratio<T.flyter) return 0;
-  if(ratio<T.trogt)  return 1;
-  if(ratio<T.kö)     return 2;
-  return 3;
+  if(ratio < T.orange) return 0;   // grönt
+  if(ratio < T.rott)   return 2;   // orange
+  return 3;                        // rött
 }
 
 /** Vilka mätsträckor hör till leden? Namn (road + riktning) OCH geometri. */
@@ -730,7 +755,10 @@ function legDelayMinutes(matched, legKm){
  * ==================================================================== */
 const C = { ok:"#33d17f", warn:"#f0b429", bad:"#ff7a3c", crit:"#ff4d5e", none:"#3a4a5e" };
 const LEVEL_COLOR = [C.ok, C.warn, C.bad, C.crit];
-const LEVEL_WORD  = ["flyter","trögt","tung kö","står still"];
+/* Nivå 3 hette "står still" men betyder nu +40 % restid, vilket inte är
+   samma sak — banderollen sa "öppen · står still". Stillastående avgörs på
+   hastigheten i closureVerdict() och har sin egen text där. */
+const LEVEL_WORD  = ["flyter","trögt","kö","tung kö"];
 const levelColor = l => l==null ? C.none : LEVEL_COLOR[l];
 const ratioColor = r => levelColor(levelFromRatio(r));
 
@@ -983,6 +1011,18 @@ function computeFit(points){
   const M=CONFIG.map;
   const pts=[[CONFIG.home.lat,CONFIG.home.lon]];
   const extra=(points||[]).filter(Boolean);
+  // Fast utsnitt: hörnen låser området, kamerapunkterna får bara vidga det.
+  if(M.fit){
+    const [[s,w],[n,e]]=M.fit;
+    let mnLat=s, mxLat=n, mnLon=w, mxLon=e;
+    for(const p of extra){
+      if(p[0]<M.county[0][0]||p[0]>M.county[1][0]) continue;
+      if(p[1]<M.county[0][1]||p[1]>M.county[1][1]) continue;
+      mnLat=Math.min(mnLat,p[0]); mxLat=Math.max(mxLat,p[0]);
+      mnLon=Math.min(mnLon,p[1]); mxLon=Math.max(mxLon,p[1]);
+    }
+    return [[mnLat,mnLon],[mxLat,mxLon]];
+  }
   // I "measured" styr de ritade mätsträckorna utsnittet. Innan data kommit
   // in finns inga — då faller vi tillbaka på lederna.
   if(M.fitMode!=="measured" || extra.length<5){
@@ -1141,8 +1181,10 @@ function drawMap(routes, cams){
   const M=CONFIG.map;
   const w=host.clientWidth||960, h=host.clientHeight||420;
 
+  // Med fast utsnitt är det bara kamerorna som får vidga det — hela
+  // mätnätet drog annars ut zoomen till Södertälje och Vaxholm igen.
   const fitPts=(cams||[]).map(c=>c.pt).filter(Boolean);
-  if(M.fitMode==="measured")
+  if(!M.fit && M.fitMode==="measured")
     for(const r of (routes||[])) for(const p of r.coords) fitPts.push(p);
   currentFit=computeFit(fitPts);
   const T=mapTransform(currentFit,w,h,10);
@@ -1177,6 +1219,30 @@ function drawMap(routes, cams){
   for(const k of skeleton)
     svg.appendChild(mkSvg("path",{d:pathOf(CONFIG.legs[k].polyline,T),
       fill:"none",stroke:"#2a3a4e","stroke-width":1.4,opacity:.28,"stroke-dasharray":"3 6"}));
+
+  // 1b. Leder som Trafikverket inte mäter har ingen mätgeometri att rita,
+  //     och blev därför helt osynliga på kartan. Huddingevägen är det
+  //     tydligaste fallet: väg 226 har en enda mätsträcka i länet och den
+  //     ligger norrut i Silvertunneln, så söderut finns ingenting. Här
+  //     ritas ledens egen linje istället, i ledens färg — grå och streckad
+  //     när det inte finns mätning, färgad när det finns (demoläget, och
+  //     framtida källor). Landvägar bara: färjornas raka streck över
+  //     skärgården såg ut som ett fel på kartan.
+  if(M.unmeasuredLegs!==false){
+    for(const k in CONFIG.legs){
+      const cfg=CONFIG.legs[k], st=legState[k]||{};
+      if(cfg.ferry || !cfg.polyline || cfg.polyline.length<2) continue;
+      if(st.coveredKm>0) continue;               // mätgeometrin ritas nedan
+      const har=st.level!=null;
+      svg.appendChild(mkSvg("path",{d:pathOf(cfg.polyline,T),fill:"none",
+        class:"legline"+(har?"":" nodata"),
+        stroke: har ? levelColor(st.level) : C.none,
+        "stroke-width":har?4:2.6,"stroke-linecap":"round",
+        "stroke-linejoin":"round",
+        "stroke-dasharray": har ? null : "6 5",
+        opacity: har?.9:.55}));
+    }
+  }
 
   // 2. Trafikverkets mätsträckor i sina köfärger
   for(const r of (routes||[])){
@@ -1289,11 +1355,35 @@ function fitRows(host, selector, showNote){
   host.appendChild(n);
 }
 
+/** Sätter kartans höjd så att ledlistans rubrik hamnar exakt i linje med
+ *  busslistans i vänsterkolumnen. Höjden kan inte räknas ut i förväg —
+ *  destinationskorten är så höga som deras innehåll kräver — så den mäts
+ *  i webbläsaren och kartan får resten. offsetTop används med flit: det är
+ *  layoutkoordinater, opåverkade av tavlans skalning.
+ *  Kartan ritas om efteråt eftersom SVG:n är knuten till rutans höjd. */
+function alignPanels(){
+  const map=el("map"), legp=el("legpanel");
+  const bus=document.querySelector(".dest.bus");
+  if(!map||!legp||!bus) return false;
+  // Rubrikerna, inte korten: busskortets rubrik och ledpanelens h3.
+  const rad = bus.querySelector("h2") || bus;
+  const mal = rad.offsetTop, nu = legp.offsetTop, nuH = map.offsetHeight;
+  // offsetTop/offsetHeight är layoutpixlar och opåverkade av transform.
+  if(!mal || !nu || !nuH) return false;         // ingen layout (t.ex. jsdom)
+  const h = nuH + (mal - nu);
+  if(!(h>=160)) return false;                   // kartan får inte bli en remsa
+  map.style.flex="0 0 "+h+"px";
+  return true;
+}
+
 /** Anpassa listorna som kan bli för höga för sina rutor.
  *  Ingen notis om de kapade raderna: "+3 fler" tog en hel rad i anspråk
  *  för att berätta att en rad inte fick plats. Bussarna ligger i tidsordning
  *  så det som kapas är ändå det som ligger längst fram i tiden. */
 function fitAll(){
+  // Höjden först: den bestämmer hur många rader som ryms.
+  if(alignPanels() && !mapBroken)
+    try{ drawMap(lastRoutes, lastCams); }catch(e){}
   fitRows(el("buses"), ".busrow", false);
   fitRows(el("legs"),  ".legrow", false);
 }
